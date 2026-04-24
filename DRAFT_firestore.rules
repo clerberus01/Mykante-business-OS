@@ -1,0 +1,129 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'clerberus@gmail.com';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Entity Validations ---
+    function isValidClient(data) {
+      return data.size() >= 6 && data.size() <= 8 &&
+             data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 255 &&
+             data.email is string && data.email.size() <= 255 &&
+             data.status in ['active', 'inactive', 'archived'] &&
+             data.createdAt is number &&
+             data.updatedAt is number;
+    }
+
+    function isValidTimelineEvent(data) {
+      return data.size() >= 7 && data.size() <= 8 &&
+             data.id is string && data.id.size() <= 128 &&
+             data.clientId is string && data.clientId.size() <= 128 &&
+             data.type in ['email', 'whatsapp', 'note', 'file', 'system'] &&
+             data.title is string && data.title.size() <= 255 &&
+             data.content is string && data.content.size() <= 10000 &&
+             data.createdAt is number &&
+             data.createdBy is string;
+    }
+
+    function isValidProject(data) {
+      return data.size() >= 8 && data.size() <= 9 &&
+             data.id is string && data.id.size() <= 128 &&
+             data.clientId is string && data.clientId.size() <= 128 &&
+             data.name is string && data.name.size() <= 255 &&
+             data.status in ['draft', 'ongoing', 'paused', 'completed', 'cancelled'] &&
+             data.startDate is number &&
+             data.budget is number &&
+             data.createdAt is number &&
+             data.updatedAt is number;
+    }
+
+    function isValidTask(data) {
+      return data.size() >= 5 && data.size() <= 9 &&
+             data.id is string && data.id.size() <= 128 &&
+             data.title is string && data.title.size() <= 500 &&
+             data.status in ['todo', 'in-progress', 'review', 'done'] &&
+             data.priority in ['low', 'medium', 'high', 'urgent'] &&
+             data.createdAt is number &&
+             data.updatedAt is number;
+    }
+
+    // --- Match Rules ---
+
+    match /clients/{clientId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isAdmin() && isValidClient(incoming()) && incoming().id == clientId;
+      allow update: if isAdmin() && isValidClient(incoming()) && 
+                    incoming().id == existing().id &&
+                    incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin();
+
+      match /events/{eventId} {
+        allow get: if isSignedIn();
+        allow list: if isSignedIn();
+        allow create: if isAdmin() && isValidTimelineEvent(incoming()) && incoming().id == eventId && incoming().clientId == clientId;
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /projects/{projectId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isAdmin() && isValidProject(incoming()) && incoming().id == projectId;
+      allow update: if isAdmin() && isValidProject(incoming()) &&
+                    incoming().id == existing().id &&
+                    incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin();
+    }
+
+    match /tasks/{taskId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isAdmin() && isValidTask(incoming()) && incoming().id == taskId;
+      allow update: if (isAdmin() || (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))) && 
+                    isValidTask(incoming()) &&
+                    incoming().id == existing().id &&
+                    incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin();
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /invoices/{invoiceId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,196 @@
+{
+  "entities": {
+    "Client": {
+      "title": "Client",
+      "description": "Information about a business client.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "personType": { "type": "string", "enum": ["Física", "Jurídica"] },
+        "name": { "type": "string" },
+        "taxId": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "company": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "inactive", "archived", "lead"] },
+        "address": {
+          "type": "object",
+          "properties": {
+            "street": { "type": "string" },
+            "number": { "type": "string" },
+            "complement": { "type": "string" },
+            "zipCode": { "type": "string" },
+            "neighborhood": { "type": "string" },
+            "city": { "type": "string" },
+            "state": { "type": "string" }
+          },
+          "required": ["street", "number", "zipCode", "city", "state"]
+        },
+        "dueDay": { "type": "number" },
+        "pixKey": { "type": "string" },
+        "bankingInfo": { "type": "string" },
+        "tags": { "type": "array" },
+        "attention": { "type": "string" },
+        "origin": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "personType", "name", "taxId", "email", "status", "createdAt", "updatedAt"]
+    },
+    "TimelineEvent": {
+      "title": "Timeline Event",
+      "description": "An event in the chronological history of a client.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "type": { "type": "string", "enum": ["email", "whatsapp", "note", "file", "system"] },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "metadata": { "type": "object" },
+        "createdAt": { "type": "number" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "clientId", "type", "title", "content", "createdAt", "createdBy"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "A business project associated with a client.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "ongoing", "paused", "completed", "cancelled"] },
+        "startDate": { "type": "number" },
+        "deadline": { "type": "number" },
+        "budget": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["paid", "pending", "overdue"] },
+        "progress": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "clientId", "name", "status", "startDate", "deadline", "budget", "paymentStatus", "progress", "createdAt", "updatedAt"]
+    },
+    "Milestone": {
+      "title": "Milestone",
+      "description": "A major phase or deliverable in a project.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "title": { "type": "string" },
+        "order": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "completed"] },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "projectId", "title", "order", "status", "createdAt"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A granular action item within a milestone.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "milestoneId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["todo", "doing", "done"] },
+        "priority": { "type": "string", "enum": ["low", "medium", "high", "urgent"] },
+        "responsible": { "type": "string" },
+        "checklist": { "type": "array" },
+        "dueDate": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "projectId", "milestoneId", "title", "status", "priority", "responsible", "createdAt", "updatedAt"]
+    },
+    "ActivityLog": {
+      "title": "Activity Log",
+      "description": "Record of changes to a project.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id", "projectId", "userName", "action", "details", "timestamp"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Financial entry for income or expense.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "date": { "type": "number" },
+        "categoryId": { "type": "string" },
+        "clientId": { "type": "string" },
+        "projectId": { "type": "string" },
+        "invoiceId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "type", "amount", "description", "date", "categoryId", "createdAt"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Billing document for a client.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "projectId": { "type": "string" },
+        "number": { "type": "string" },
+        "amount": { "type": "number" },
+        "dueDate": { "type": "number" },
+        "status": { "type": "string", "enum": ["draft", "sent", "paid", "overdue"] },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "clientId", "number", "amount", "dueDate", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Collection of clients."
+    },
+    "/clients/{clientId}/events/{eventId}": {
+      "schema": "TimelineEvent",
+      "description": "Events associated with a specific client."
+    },
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Collection of projects."
+    },
+    "/projects/{projectId}/milestones/{milestoneId}": {
+      "schema": "Milestone",
+      "description": "Major phases of a project."
+    },
+    "/projects/{projectId}/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Granular tasks within a milestone."
+    },
+    "/projects/{projectId}/activity/{logId}": {
+      "schema": "ActivityLog",
+      "description": "Technical log of project activities."
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Financial transactions."
+    },
+    "/invoices/{invoiceId}": {
+      "schema": "Invoice",
+      "description": "Billing invoices."
+    }
+  }
+}
