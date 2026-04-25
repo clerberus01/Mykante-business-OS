@@ -41,6 +41,7 @@ import {
 } from '../hooks/supabase';
 import { Transaction, TransactionStatus } from '../types';
 import TransactionModal from '../components/TransactionModal';
+import { clearPendingNavigationIntent, getPendingNavigationIntent } from '../lib/navigation';
 
 export default function Finance() {
   const { transactions, loading, addTransaction, updateTransaction } = useTransactions();
@@ -49,7 +50,19 @@ export default function Finance() {
   const [activeTab, setActiveTab ] = useState<'flow' | 'receivables' | 'payables' | 'reconciliation'>('flow');
   const [showModal, setShowModal] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | undefined>(undefined);
+  const [draftTimestamp, setDraftTimestamp] = useState<number | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
+
+  React.useEffect(() => {
+    const pendingIntent = getPendingNavigationIntent();
+
+    if (pendingIntent?.kind === 'create-transaction') {
+      setEditingTransaction(undefined);
+      setDraftTimestamp(pendingIntent.timestamp);
+      setShowModal(true);
+      clearPendingNavigationIntent();
+    }
+  }, []);
 
   // DRE Calculations
   const metrics = useMemo(() => {
@@ -91,8 +104,37 @@ export default function Finance() {
   };
 
   const currentMonthData = useMemo(() => {
-     // Aggregate by day for chart
-     return []; // Simplified for now
+     const now = new Date();
+     const month = now.getMonth();
+     const year = now.getFullYear();
+     const buckets = [
+       { name: 'S1', income: 0, expense: 0 },
+       { name: 'S2', income: 0, expense: 0 },
+       { name: 'S3', income: 0, expense: 0 },
+       { name: 'S4', income: 0, expense: 0 },
+       { name: 'S5', income: 0, expense: 0 },
+     ];
+
+     transactions.forEach((transaction) => {
+       const transactionDate = new Date(transaction.date);
+       if (transactionDate.getMonth() !== month || transactionDate.getFullYear() !== year) {
+         return;
+       }
+
+       const day = transactionDate.getDate();
+       const bucketIndex = Math.min(Math.floor((day - 1) / 7), buckets.length - 1);
+       const bucket = buckets[bucketIndex];
+
+       if (transaction.type === 'income' && transaction.status === 'liquidated') {
+         bucket.income += transaction.amount;
+       }
+
+       if (transaction.type === 'expense' && transaction.status === 'liquidated') {
+         bucket.expense += transaction.amount;
+       }
+     });
+
+     return buckets;
   }, [transactions]);
 
   const handleQuickCollection = (tx: Transaction) => {
@@ -125,7 +167,7 @@ export default function Finance() {
              </button>
              <button 
                type="button"
-               onClick={() => { setEditingTransaction(undefined); setShowModal(true); }}
+               onClick={() => { setEditingTransaction(undefined); setDraftTimestamp(undefined); setShowModal(true); }}
                className="bg-brand text-white text-[10px] px-4 py-2 rounded font-black hover:bg-os-dark transition-all uppercase tracking-widest flex items-center gap-2 shadow-sm shadow-brand/20"
              >
                <Plus className="w-3.5 h-3.5" />
@@ -198,12 +240,7 @@ export default function Finance() {
                        </div>
                        <div className="h-[300px]">
                           <ResponsiveContainer width="100%" height="100%">
-                             <AreaChart data={[
-                               { name: 'S1', income: 4000, expense: 2400 },
-                               { name: 'S2', income: 3000, expense: 1398 },
-                               { name: 'S3', income: 2000, expense: 3800 },
-                               { name: 'S4', income: 2780, expense: 1908 },
-                             ]}>
+                             <AreaChart data={currentMonthData}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} dy={10} />
                                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
@@ -288,7 +325,7 @@ export default function Finance() {
                                                  <MessageSquare className="w-4 h-4" />
                                               </button>
                                            )}
-                                           <button type="button" onClick={() => { setEditingTransaction(tx); setShowModal(true); }} className="p-1 text-gray-300 hover:text-os-text"><MoreHorizontal className="w-4 h-4" /></button>
+                                           <button type="button" onClick={() => { setEditingTransaction(tx); setDraftTimestamp(undefined); setShowModal(true); }} className="p-1 text-gray-300 hover:text-os-text"><MoreHorizontal className="w-4 h-4" /></button>
                                         </div>
                                      </td>
                                   </tr>
@@ -458,8 +495,12 @@ export default function Finance() {
 
       {showModal && (
         <TransactionModal 
-          onClose={() => setShowModal(false)}
+          onClose={() => {
+            setShowModal(false);
+            setDraftTimestamp(undefined);
+          }}
           initialData={editingTransaction}
+          defaultTimestamp={draftTimestamp}
           onSave={async (data) => {
              if (editingTransaction) {
                 await updateTransaction(editingTransaction.id, data);

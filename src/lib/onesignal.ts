@@ -106,10 +106,10 @@ export async function initializeOneSignal() {
         OneSignal.setConsentRequired(true);
         await OneSignal.init({
           appId: env.oneSignalAppId,
-          allowLocalhostAsSecureOrigin: true,
+          allowLocalhostAsSecureOrigin: window.location.hostname === 'localhost',
           autoResubscribe: true,
           notifyButton: { enable: false },
-          serviceWorkerPath: 'OneSignalSDKWorker.js',
+          serviceWorkerPath: '/OneSignalSDKWorker.js',
         });
         initialized = true;
         resolve();

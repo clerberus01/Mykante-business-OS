@@ -13,14 +13,34 @@ import { cn } from '../lib/utils';
 import { useSupabaseProjects as useProjects } from '../hooks/supabase';
 import ProjectDetail from './ProjectDetail';
 import ProjectModal from '../components/ProjectModal';
+import { clearPendingNavigationIntent, getPendingNavigationIntent } from '../lib/navigation';
 
 export default function Projects() {
-  const { projects, loading, addProject, updateProject } = useProjects();
+  const { projects, loading, addProject, updateProject, deleteProject } = useProjects();
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | undefined>(undefined);
+
+  React.useEffect(() => {
+    const pendingIntent = getPendingNavigationIntent();
+
+    if (!pendingIntent) {
+      return;
+    }
+
+    if (pendingIntent.kind === 'open-project') {
+      setSelectedProjectId(pendingIntent.projectId);
+      clearPendingNavigationIntent();
+    }
+
+    if (pendingIntent.kind === 'create-project') {
+      setEditingProject(undefined);
+      setShowModal(true);
+      clearPendingNavigationIntent();
+    }
+  }, []);
 
   const normalizedProjects = projects.filter((project): project is Project => Boolean(project && project.id)).map((project) => ({
     ...project,
@@ -36,7 +56,41 @@ export default function Projects() {
   const selectedProject = normalizedProjects.find(p => p.id === selectedProjectId);
 
   if (selectedProject) {
-    return <ProjectDetail project={selectedProject} onBack={() => setSelectedProjectId(null)} />;
+    return (
+      <>
+        <ProjectDetail
+          project={selectedProject}
+          onBack={() => setSelectedProjectId(null)}
+          onEdit={(project) => {
+            setEditingProject(project);
+            setShowModal(true);
+          }}
+        />
+        {showModal && (
+          <ProjectModal
+            onClose={() => setShowModal(false)}
+            initialData={editingProject}
+            onDelete={
+              editingProject
+                ? async () => {
+                    await deleteProject(editingProject.id);
+                    setEditingProject(undefined);
+                    setSelectedProjectId(null);
+                    setShowModal(false);
+                  }
+                : undefined
+            }
+            onSave={async (data) => {
+              if (editingProject) {
+                await updateProject(editingProject.id, data);
+              } else {
+                await addProject(data);
+              }
+            }}
+          />
+        )}
+      </>
+    );
   }
 
   const filteredProjects = normalizedProjects.filter(p => 
@@ -123,7 +177,14 @@ export default function Projects() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProjects.map(project => (
             <div key={project.id}>
-               <ProjectCard project={project} onClick={() => setSelectedProjectId(project.id)} />
+               <ProjectCard
+                 project={project}
+                 onClick={() => setSelectedProjectId(project.id)}
+                 onEdit={() => {
+                   setEditingProject(project);
+                   setShowModal(true);
+                 }}
+               />
             </div>
           ))}
           <button 
@@ -153,10 +214,14 @@ export default function Projects() {
               {filteredProjects.map(project => (
                 <tr key={project.id} className="hover:bg-gray-50 transition-colors group">
                   <td className="px-6 py-4">
-                    <div className="flex flex-col">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedProjectId(project.id)}
+                      className="flex flex-col text-left"
+                    >
                       <span className="text-xs font-bold text-os-text">{project.name}</span>
                       <span className="text-[10px] text-gray-400 truncate max-w-[200px]">{project.description}</span>
-                    </div>
+                    </button>
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-gray-100 text-gray-500">
@@ -170,7 +235,15 @@ export default function Projects() {
                     R$ {project.budget.toLocaleString()}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button type="button" className="text-gray-300 hover:text-os-text opacity-0 group-hover:opacity-100 transition-all">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingProject(project);
+                        setShowModal(true);
+                      }}
+                      className="text-gray-300 hover:text-os-text opacity-0 group-hover:opacity-100 transition-all"
+                      title="Editar projeto"
+                    >
                       <MoreHorizontal className="w-4 h-4" />
                     </button>
                   </td>
@@ -184,6 +257,14 @@ export default function Projects() {
         <ProjectModal 
           onClose={() => setShowModal(false)}
           initialData={editingProject}
+          onDelete={
+            editingProject
+              ? async () => {
+                  await deleteProject(editingProject.id);
+                  setEditingProject(undefined);
+                }
+              : undefined
+          }
           onSave={async (data) => {
             if (editingProject) {
               await updateProject(editingProject.id, data);

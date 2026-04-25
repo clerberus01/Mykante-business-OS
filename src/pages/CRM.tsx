@@ -29,6 +29,7 @@ import {
   useSupabaseProposals as useProposals,
 } from '../hooks/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { clearPendingNavigationIntent, getPendingNavigationIntent } from '../lib/navigation';
 
 export default function CRM() {
   const { clients, loading: loadingClients, addClient, deleteClient, updateClient } = useClients();
@@ -49,7 +50,9 @@ export default function CRM() {
   const filteredClients = clients.filter(c => 
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.company?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.email.toLowerCase().includes(searchQuery.toLowerCase())
+    c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (c.contactName ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (c.contactEmail ?? '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const selectedClient = clients.find(c => c.id === selectedClientId) || filteredClients[0];
@@ -63,6 +66,25 @@ export default function CRM() {
       setSelectedClientId(clients[0].id);
     }
   }, [clients, selectedClientId]);
+
+  React.useEffect(() => {
+    const pendingIntent = getPendingNavigationIntent();
+
+    if (!pendingIntent) {
+      return;
+    }
+
+    if (pendingIntent.kind === 'open-client') {
+      setSelectedClientId(pendingIntent.clientId);
+      clearPendingNavigationIntent();
+    }
+
+    if (pendingIntent.kind === 'create-client') {
+      setEditingClient(undefined);
+      setShowClientModal(true);
+      clearPendingNavigationIntent();
+    }
+  }, []);
 
   const handleAddEvent = async () => {
     if (!selectedClientId || !activeAction || !actionContent.trim()) return;
@@ -266,6 +288,13 @@ export default function CRM() {
                       <Phone className="w-3 h-3 text-gray-300" />
                       {selectedClient.phone}
                     </button>
+                    {selectedClient.contactName && (
+                      <span className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-gray-100 rounded text-[10px] font-mono text-gray-500">
+                        <Users className="w-3 h-3 text-gray-300" />
+                        {selectedClient.contactName}
+                        {selectedClient.contactRole ? ` . ${selectedClient.contactRole}` : ''}
+                      </span>
+                    )}
                     {selectedClient.tags?.map(tag => (
                       <span key={tag} className="px-2 py-1 bg-white border border-brand/10 text-[9px] font-bold uppercase tracking-widest text-brand rounded shadow-sm">#{tag}</span>
                     ))}

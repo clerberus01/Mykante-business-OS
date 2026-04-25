@@ -10,14 +10,30 @@ export default async function handler(request, response) {
     return sendJson(response, 405, { error: 'Method not allowed.' });
   }
 
+  let dispatchContext = null;
+  let adminClient = null;
+
   try {
     await readJsonBody(request);
     const { supabase, user, profile, organizationId } = await getAuthenticatedContext(request);
+    adminClient = supabase;
     const userEmail = profile?.email || user.email;
 
     if (!userEmail) {
       return sendJson(response, 400, { error: 'Authenticated user does not have an email address.' });
     }
+
+    dispatchContext = {
+      organization_id: organizationId,
+      user_id: user.id,
+      channel: 'email',
+      provider: 'resend',
+      template_key: 'test_email',
+      recipient: userEmail,
+      payload: {
+        test: true,
+      },
+    };
 
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
@@ -38,23 +54,33 @@ export default async function handler(request, response) {
     }
 
     await supabase.from('notification_dispatches').insert({
-      organization_id: organizationId,
-      user_id: user.id,
-      channel: 'email',
-      provider: 'resend',
-      template_key: 'test_email',
-      recipient: userEmail,
-      status: 'sent',
+      ...dispatchContext,
+      status: 'queued',
       external_message_id: data?.id ?? null,
-      payload: {
-        test: true,
-      },
-      sent_at: new Date().toISOString(),
     });
 
-    return sendJson(response, 200, { success: true, id: data?.id ?? null });
+    return sendJson(response, 200, {
+      success: true,
+      accepted: true,
+      id: data?.id ?? null,
+      message:
+        'O envio foi aceito pela Resend. Isso nao confirma entrega na caixa de entrada; confirme inbox, spam e o painel da Resend.',
+    });
   } catch (error) {
     console.error('Email notification error:', error);
+
+    if (dispatchContext && adminClient) {
+      try {
+        await adminClient.from('notification_dispatches').insert({
+          ...dispatchContext,
+          status: 'failed',
+          error_message: error instanceof Error ? error.message : 'Failed to send email notification.',
+        });
+      } catch (dispatchError) {
+        console.error('Email dispatch audit insert failed:', dispatchError);
+      }
+    }
+
     return sendJson(response, 500, {
       error: error instanceof Error ? error.message : 'Failed to send email notification.',
     });

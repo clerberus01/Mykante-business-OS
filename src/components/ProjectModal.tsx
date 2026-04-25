@@ -8,11 +8,13 @@ interface ProjectModalProps {
   onClose: () => void;
   onSave: (project: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'progress'>) => Promise<void>;
   initialData?: Project;
+  onDelete?: () => Promise<void>;
 }
 
-export default function ProjectModal({ onClose, onSave, initialData }: ProjectModalProps) {
+export default function ProjectModal({ onClose, onSave, initialData, onDelete }: ProjectModalProps) {
   const { clients } = useClients();
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [formData, setFormData] = useState({
     name: initialData?.name || '',
     clientId: initialData?.clientId || '',
@@ -44,6 +46,24 @@ export default function ProjectModal({ onClose, onSave, initialData }: ProjectMo
       console.error('Error saving project:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!initialData || !onDelete) return;
+    if (!window.confirm(`Deseja realmente excluir o projeto "${initialData.name}"?`)) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await onDelete();
+      onClose();
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      window.alert('Nao foi possivel excluir o projeto.');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -185,6 +205,16 @@ export default function ProjectModal({ onClose, onSave, initialData }: ProjectMo
           </div>
 
           <div className="pt-6 border-t border-gray-100 flex gap-3">
+            {initialData && onDelete && (
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                disabled={loading || deleting}
+                className="px-5 py-3 text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-600 transition-all disabled:opacity-50"
+              >
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Excluir Projeto'}
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -194,7 +224,7 @@ export default function ProjectModal({ onClose, onSave, initialData }: ProjectMo
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || deleting}
               className="flex-[2] py-3 bg-brand text-white rounded text-[10px] font-black uppercase tracking-[0.2em] hover:bg-os-dark transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : initialData ? 'Salvar Alterações' : 'Configurar Projeto'}

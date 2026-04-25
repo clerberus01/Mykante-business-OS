@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Preparar a substituicao do Firebase por Supabase no frontend sem alterar o design e sem trocar as telas ainda.
+Preparar a consolidacao da camada Supabase no frontend sem alterar o design e sem trocar as telas ainda.
 
 ## O que foi criado
 
@@ -15,11 +15,11 @@ Preparar a substituicao do Firebase por Supabase no frontend sem alterar o desig
 - `src/services/finance/transactionRepository.ts`
 - `src/services/proposals/proposalRepository.ts`
 - `src/hooks/supabase`
-  - hooks equivalentes aos hooks legados do Firebase
+  - hooks equivalentes aos contratos usados pelas telas
 
 ## Decisao de arquitetura
 
-O frontend atual usa tipos baseados em timestamps numericos e estruturas pensadas para Firestore. Em vez de mudar as telas agora, a nova camada converte:
+O frontend atual usa tipos baseados em timestamps numericos e estruturas legadas do modelo anterior. Em vez de mudar as telas agora, a nova camada converte:
 
 - linhas do Postgres/Supabase
 - campos `snake_case`
@@ -38,10 +38,7 @@ para os mesmos objetos esperados pelas telas:
 
 ## Resultado pratico
 
-As proximas fases podem migrar modulo por modulo apenas trocando imports:
-
-- de `src/hooks/useFirebase.ts`
-- para `src/hooks/supabase`
+As fases seguintes puderam migrar modulo por modulo trocando a camada de dados para `src/hooks/supabase`, sem alterar o design das telas.
 
 ## Pendencias esperadas
 

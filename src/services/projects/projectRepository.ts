@@ -183,6 +183,20 @@ export class SupabaseProjectRepository extends SupabaseRepository {
     );
   }
 
+  async softDeleteProject(id: string) {
+    await this.unwrap(
+      this.supabase
+        .from('projects')
+        .update({
+          deleted_at: new Date().toISOString(),
+        })
+        .eq('organization_id', this.organizationId)
+        .eq('id', id)
+        .select('id'),
+      'Nao foi possivel excluir o projeto.',
+    );
+  }
+
   async listMilestones(projectId: string) {
     const rows = await this.unwrap(
       this.supabase

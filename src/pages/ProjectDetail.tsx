@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { 
   BarChart3, 
   Calendar, 
@@ -28,23 +28,28 @@ import {
   useSupabaseProjectActivity as useProjectActivity,
   useSupabaseClients as useClients,
   useSupabaseTransactions as useTransactions,
+  useSupabaseDocuments as useDocuments,
 } from '../hooks/supabase';
 
 interface ProjectDetailProps {
   project: Project;
   onBack: () => void;
+  onEdit: (project: Project) => void;
 }
 
-export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
+export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetailProps) {
   const { milestones, loading: loadingMilestones, updateMilestone, addMilestone } = useMilestones(project.id);
   const { tasks, loading: loadingTasks, updateTask, addTask } = useTasks(project.id);
   const { activities, addActivity } = useProjectActivity(project.id);
   const { clients } = useClients();
   const { transactions } = useTransactions();
+  const { documents, uploadDocument, downloadDocument } = useDocuments();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   
   const client = clients.find(c => c.id === project.clientId);
   const projectTransactions = transactions.filter(t => t.projectId === project.id);
   const projectBalance = projectTransactions.reduce((acc, t) => t.type === 'income' ? acc + t.amount : acc - t.amount, 0);
+  const projectDocuments = documents.filter(document => document.projectId === project.id);
 
   const [activeTab, setActiveTab ] = useState<'kanban' | 'milestones' | 'files' | 'finance' | 'activity'>('kanban');
 
@@ -95,10 +100,6 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
       'Operador'
     );
 
-    if (newStatus === 'completed') {
-       // SUGGEST RESEND EMAIL (Simulated logic)
-       alert(`Sugestão: Disparar e-mail via Resend para ${client?.email} informando a conclusão da etapa: ${milestone.title}`);
-    }
   };
 
   const moveTask = async (taskId: string, newStatus: TaskStatus) => {
@@ -110,6 +111,25 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
       `Tarefa "${task.title}" movida para ${newStatus}.`,
       'Operador'
     );
+  };
+
+  const handleProjectFileSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0];
+    if (!selectedFile) return;
+
+    try {
+      await uploadDocument(selectedFile, {
+        folder: 'Projetos',
+        projectId: project.id,
+        clientId: project.clientId || null,
+      });
+      addActivity('Arquivo Enviado', `Arquivo "${selectedFile.name}" vinculado ao projeto.`, 'Operador');
+    } catch (error) {
+      console.error('Project document upload failed:', error);
+      window.alert('Nao foi possivel enviar o arquivo do projeto.');
+    } finally {
+      event.target.value = '';
+    }
   };
 
   return (
@@ -137,6 +157,13 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
           </div>
 
           <div className="flex items-center gap-4">
+             <button
+               type="button"
+               onClick={() => onEdit(project)}
+               className="px-4 py-2 border border-gray-200 rounded text-[10px] font-black uppercase tracking-widest text-os-text hover:border-brand hover:text-brand transition-all"
+             >
+               Editar Projeto
+             </button>
              <div className="text-right">
                 <div className="flex items-center justify-end gap-2 mb-1">
                    {project.paymentStatus === 'paid' ? (
@@ -451,7 +478,35 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
 
             {activeTab === 'files' && (
              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                {[
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(event) => void handleProjectFileSelection(event)}
+                />
+                {projectDocuments.length === 0 && (
+                  <div className="md:col-span-4 bg-white p-8 rounded-xl border border-gray-100 shadow-sm text-center text-[10px] font-bold uppercase tracking-widest text-gray-300">
+                    Nenhum arquivo vinculado a este projeto.
+                  </div>
+                )}
+                {projectDocuments.map((file) => (
+                  <div key={file.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col gap-4 group hover:border-brand transition-all cursor-pointer">
+                     <div className="w-10 h-10 rounded bg-gray-50 flex items-center justify-center text-gray-300 group-hover:text-brand bg-brand/5">
+                        <FileText className="w-5 h-5 text-brand" />
+                     </div>
+                     <div>
+                        <h4 className="text-xs font-bold text-os-text truncate">{file.displayName}</h4>
+                        <p className="text-[9px] font-mono text-gray-400 uppercase mt-1">
+                          {Math.max(1, Math.round(file.sizeBytes / 1024))} KB â€¢ {(file.fileExtension || 'file').toUpperCase()}
+                        </p>
+                     </div>
+                     <div className="flex gap-2">
+                        <button type="button" onClick={() => void downloadDocument(file)} className="flex-1 py-1.5 bg-gray-50 text-[8px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-100 rounded">DOWNLOAD</button>
+                        <button type="button" onClick={() => void downloadDocument(file)} className="flex-1 py-1.5 bg-gray-50 text-[8px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-100 rounded">VISUALIZAR</button>
+                     </div>
+                  </div>
+                ))}
+                {false && [
                   { name: 'Proposta Comercial.pdf', size: '2.4 MB', type: 'PDF' },
                   { name: 'Contrato Assinado.pdf', size: '1.1 MB', type: 'PDF' },
                   { name: 'Manual da Marca.zip', size: '42 MB', type: 'ZIP' },
@@ -470,7 +525,7 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
                      </div>
                   </div>
                 ))}
-                <button type="button" className="border-2 border-dashed border-gray-200 rounded-xl p-8 flex flex-col items-center justify-center gap-3 opacity-30 hover:opacity-100 hover:border-brand transition-all">
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-gray-200 rounded-xl p-8 flex flex-col items-center justify-center gap-3 opacity-30 hover:opacity-100 hover:border-brand transition-all">
                    <Plus className="w-6 h-6 text-gray-400" />
                    <span className="text-[10px] font-black uppercase tracking-widest">Upload Mídia</span>
                 </button>

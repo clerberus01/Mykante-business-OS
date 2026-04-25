@@ -20,6 +20,10 @@ export interface Client {
   email: string;
   phone: string;
   company?: string;
+  contactName?: string;
+  contactRole?: string;
+  contactEmail?: string;
+  contactPhone?: string;
   status: EntityStatus;
   
   // Financial

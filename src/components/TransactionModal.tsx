@@ -18,19 +18,22 @@ interface TransactionModalProps {
   onClose: () => void;
   onSave: (data: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
   initialData?: Transaction;
+  defaultTimestamp?: number;
 }
 
-export default function TransactionModal({ onClose, onSave, initialData }: TransactionModalProps) {
+export default function TransactionModal({ onClose, onSave, initialData, defaultTimestamp }: TransactionModalProps) {
   const { clients } = useClients();
   const { projects } = useProjects();
   const [loading, setLoading] = useState(false);
+  const initialDate = initialData?.date ?? defaultTimestamp ?? Date.now();
+  const initialDueDate = initialData?.dueDate ?? defaultTimestamp ?? Date.now();
   
   const [formData, setFormData] = useState({
     type: initialData?.type || 'expense' as TransactionType,
     amount: initialData?.amount || 0,
     description: initialData?.description || '',
-    date: initialData?.date ? new Date(initialData.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-    dueDate: initialData?.dueDate ? new Date(initialData.dueDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+    date: new Date(initialDate).toISOString().split('T')[0],
+    dueDate: new Date(initialDueDate).toISOString().split('T')[0],
     status: initialData?.status || 'pending' as TransactionStatus,
     categoryId: initialData?.categoryId || 'Outros',
     clientId: initialData?.clientId || '',

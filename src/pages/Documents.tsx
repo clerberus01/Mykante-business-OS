@@ -13,6 +13,7 @@ import {
 import { cn, formatDate } from '../lib/utils';
 import { useSupabaseDocuments } from '../hooks/supabase';
 import type { StoredDocument } from '../types';
+import { clearPendingNavigationIntent, getPendingNavigationIntent } from '../lib/navigation';
 
 function formatBytes(sizeBytes: number) {
   if (sizeBytes <= 0) return '0 B';
@@ -41,6 +42,15 @@ export default function Documents() {
   const [activeFolder, setActiveFolder] = useState<string>('Todos os Arquivos');
   const [isUploading, setIsUploading] = useState(false);
   const [busyDocumentId, setBusyDocumentId] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    const pendingIntent = getPendingNavigationIntent();
+
+    if (pendingIntent?.kind === 'upload-document') {
+      fileInputRef.current?.click();
+      clearPendingNavigationIntent();
+    }
+  }, []);
 
   const folderStats = useMemo(() => {
     const counts = new Map<string, number>();

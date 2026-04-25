@@ -41,17 +41,15 @@ Objetivo: substituir a sessao principal do frontend por Supabase Auth e preparar
 - usa `src/lib/supabase/client.ts`
 - mantem sessao persistente no browser
 
-### Ponte legada temporaria
+## Observacao historica
 
-- `src/lib/firebase.ts` agora tem uma sessao anonima temporaria para leitura do Firestore legado
-- isso existe apenas para manter o app operacional enquanto CRM, projetos e financeiro ainda nao foram migrados
+- durante a migracao inicial houve uma ponte temporaria de sessao legada para manter leituras no Firestore
+- essa ponte foi removida na Parte 12, quando os modulos ativos deixaram de depender do Firebase
 
-## Limitacoes temporarias
+## Limitacoes temporarias na epoca
 
-- os dados principais ainda estao no Firebase
-- o login principal ja e Supabase, mas partes do app ainda dependem do backend legado
-- a ponte legada foi mantida para reduzir quebra funcional durante a transicao
-- a autorizacao real de negocio so ficara completa quando as entidades forem migradas para o Supabase
+- o login principal ja era Supabase, mas partes do app ainda dependiam do backend legado
+- a autorizacao real de negocio so ficaria completa quando as entidades fossem migradas para o Supabase
 
 ## Validacoes executadas
 

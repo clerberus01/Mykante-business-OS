@@ -11,6 +11,7 @@ import Finance from './pages/Finance';
 import Communications from './pages/Communications';
 import { useAuth } from './contexts/AuthContext';
 import ContentErrorBoundary from './components/ContentErrorBoundary';
+import { setPendingNavigationIntent } from './lib/navigation';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -33,10 +34,33 @@ export default function App() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard': return <Dashboard />;
+      case 'dashboard':
+        return (
+          <Dashboard
+            onOpenProject={(projectId) => {
+              setPendingNavigationIntent({ kind: 'open-project', projectId });
+              setActiveTab('projects');
+            }}
+          />
+        );
       case 'crm': return <CRM />;
       case 'projects': return <Projects />;
-      case 'calendar': return <Calendar />;
+      case 'calendar':
+        return (
+          <Calendar
+            onOpenProject={(projectId) => {
+              setPendingNavigationIntent({ kind: 'open-project', projectId });
+              setActiveTab('projects');
+            }}
+            onOpenFinance={() => {
+              setActiveTab('finance');
+            }}
+            onCreateTransaction={(timestamp) => {
+              setPendingNavigationIntent({ kind: 'create-transaction', timestamp });
+              setActiveTab('finance');
+            }}
+          />
+        );
       case 'finance': return <Finance />;
       case 'messages': return <Communications />;
       case 'docs': return <Documents />;

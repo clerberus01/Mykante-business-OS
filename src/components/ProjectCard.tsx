@@ -1,5 +1,5 @@
 import React from 'react';
-import { Target, Calendar } from 'lucide-react';
+import { Target, Calendar, MoreHorizontal } from 'lucide-react';
 import { Project } from '../types';
 import { formatCurrency, formatDate, cn } from '../lib/utils';
 
@@ -19,7 +19,15 @@ const STATUS_LABELS = {
   cancelled: 'Cancelado',
 };
 
-export default function ProjectCard({ project, onClick }: { project: Project, onClick?: () => void }) {
+export default function ProjectCard({
+  project,
+  onClick,
+  onEdit,
+}: {
+  project: Project;
+  onClick?: () => void;
+  onEdit?: () => void;
+}) {
   const projectStatus = Object.hasOwn(STATUS_COLORS, project.status) ? project.status : 'draft';
   const projectId = typeof project.id === 'string' ? project.id : 'sem-id';
   const projectName = project.name || 'Projeto sem nome';
@@ -48,7 +56,22 @@ export default function ProjectCard({ project, onClick }: { project: Project, on
         )}>
           {STATUS_LABELS[projectStatus]}
         </span>
-        <span className="text-[10px] font-mono text-gray-400">#{projectId.slice(0, 5)}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono text-gray-400">#{projectId.slice(0, 5)}</span>
+          {onEdit && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit();
+              }}
+              className="p-1 rounded text-gray-300 hover:text-os-text hover:bg-gray-50 opacity-0 group-hover:opacity-100 transition-all"
+              title="Editar projeto"
+            >
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
       
       <h3 className="font-bold text-os-text text-sm mb-1 leading-tight">{projectName}</h3>

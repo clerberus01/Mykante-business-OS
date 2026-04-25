@@ -52,12 +52,21 @@ export function useSupabaseDocuments() {
   }, [loadDocuments]);
 
   const uploadDocument = useCallback(
-    async (file: File) => {
+    async (
+      file: File,
+      options?: {
+        folder?: string;
+        clientId?: string | null;
+        projectId?: string | null;
+        proposalId?: string | null;
+        displayName?: string;
+      },
+    ) => {
       if (!repository || !organizationId) return;
 
       const extension = file.name.includes('.') ? file.name.split('.').pop()?.toLowerCase() ?? '' : '';
       const safeName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-      const folder = guessFolder(file);
+      const folder = options?.folder ?? guessFolder(file);
       const storagePath = `${organizationId}/${folder}/${safeName}`;
 
       const { error } = await supabase.storage.from(DOCUMENT_BUCKET).upload(storagePath, file, {
@@ -75,11 +84,14 @@ export function useSupabaseDocuments() {
           bucketId: DOCUMENT_BUCKET,
           storagePath,
           fileName: file.name,
-          displayName: file.name,
+          displayName: options?.displayName ?? file.name,
           fileExtension: extension || null,
           mimeType: file.type || null,
           sizeBytes: file.size,
           folder,
+          clientId: options?.clientId ?? null,
+          projectId: options?.projectId ?? null,
+          proposalId: options?.proposalId ?? null,
         });
       } catch (error) {
         await supabase.storage.from(DOCUMENT_BUCKET).remove([storagePath]);

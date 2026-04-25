@@ -54,7 +54,16 @@ export function useSupabaseProjects() {
     [loadProjects, repository],
   );
 
-  return { projects, loading, addProject, updateProject, refreshProjects: loadProjects };
+  const deleteProject = useCallback(
+    async (id: string) => {
+      if (!repository) return;
+      await repository.softDeleteProject(id);
+      await loadProjects();
+    },
+    [loadProjects, repository],
+  );
+
+  return { projects, loading, addProject, updateProject, deleteProject, refreshProjects: loadProjects };
 }
 
 export function useSupabaseMilestones(projectId: string | null) {

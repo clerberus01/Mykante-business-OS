@@ -39,7 +39,13 @@ async function sendTestNotification(accessToken: string, channel: 'email' | 'pus
     }),
   });
 
-  const payload = (await response.json().catch(() => ({}))) as { error?: string; success?: boolean };
+  const payload = (await response.json().catch(() => ({}))) as {
+    error?: string;
+    success?: boolean;
+    accepted?: boolean;
+    id?: string | null;
+    message?: string;
+  };
 
   if (!response.ok) {
     throw new Error(payload.error || 'Falha ao enviar notificacao de teste.');
@@ -119,8 +125,15 @@ export default function Settings() {
     setTestingChannel(channel);
 
     try {
-      await sendTestNotification(session.access_token, channel);
-      window.alert(channel === 'email' ? 'E-mail de teste enviado.' : 'Push de teste enviado.');
+      const result = await sendTestNotification(session.access_token, channel);
+      if (channel === 'email') {
+        window.alert(
+          result.message ||
+            'O envio foi aceito pelo provedor. Verifique caixa de entrada, spam e o painel da Resend.',
+        );
+      } else {
+        window.alert('Push de teste enviado.');
+      }
     } catch (error) {
       console.error('Notification test failed:', error);
       window.alert(channel === 'email' ? 'Falha ao enviar e-mail de teste.' : 'Falha ao enviar push de teste.');

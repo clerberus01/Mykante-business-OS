@@ -1,6 +1,6 @@
 # Services Layer
 
-This folder will hold the domain services used during the Firebase to Supabase migration.
+This folder holds the domain services used by the Supabase data layer.
 
 Current modules:
 
@@ -14,7 +14,7 @@ The current design is:
 
 - repositories per domain
 - mapper helpers to convert Postgres rows into the existing frontend types
-- one hook layer under `src/hooks/supabase` mirroring the current Firebase hook API
-- no page wiring yet, to keep the migration incremental and low-risk
+- one hook layer under `src/hooks/supabase` mirroring the existing page contracts
+- page wiring kept incremental to reduce migration risk
 
-The goal is to keep the page and component design intact while replacing the current data source.
+The goal is to keep the page and component design intact while keeping Supabase as the single active data source.

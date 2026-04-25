@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { getSupabaseBrowserClient } from '../lib/supabase';
-import { closeLegacyFirebaseSession, ensureLegacyFirebaseReadSession } from '../lib/firebase';
 import { logoutOneSignalUser, syncOneSignalUser } from '../lib/onesignal';
 
 type AuthRole = 'owner' | 'admin' | 'manager' | 'operator';
@@ -86,12 +85,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       setSession(nextSession);
-
-      try {
-        await ensureLegacyFirebaseReadSession();
-      } catch (legacyAuthError) {
-        console.warn('Legacy Firebase session unavailable:', legacyAuthError);
-      }
 
       await supabase.rpc('bootstrap_current_user_organization');
 
@@ -253,7 +246,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     await supabase.auth.signOut();
-    await closeLegacyFirebaseSession();
     try {
       await logoutOneSignalUser();
     } catch (oneSignalError) {

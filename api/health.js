@@ -1,5 +1,6 @@
 import { getSupabaseAdminClient } from './_lib/supabaseAdmin.js';
 import { sendJson } from './_lib/auth.js';
+import { getPublicAppUrl } from './_lib/runtime.js';
 
 const REQUIRED_SERVER_ENVS = [
   'SUPABASE_PROJECT_URL',
@@ -27,6 +28,22 @@ export default async function handler(request, response) {
 
   try {
     const missingEnv = getMissingEnvKeys();
+    const publicAppUrl = getPublicAppUrl();
+
+    if (missingEnv.length > 0) {
+      return sendJson(response, 503, {
+        success: false,
+        runtime: 'vercel-nodejs',
+        checks: {
+          database: 'skipped',
+          env: 'missing',
+          appUrl: publicAppUrl ? 'ok' : 'missing_or_invalid',
+        },
+        missingEnv,
+        publicAppUrl,
+        now: new Date().toISOString(),
+      });
+    }
 
     const supabase = getSupabaseAdminClient();
     const { error } = await supabase.from('organizations').select('id', { count: 'exact', head: true });
@@ -40,9 +57,11 @@ export default async function handler(request, response) {
       runtime: 'vercel-nodejs',
       checks: {
         database: 'ok',
-        env: missingEnv.length === 0 ? 'ok' : 'missing',
+        env: 'ok',
+        appUrl: publicAppUrl ? 'ok' : 'missing_or_invalid',
       },
       missingEnv,
+      publicAppUrl,
       now: new Date().toISOString(),
     });
   } catch (error) {
@@ -51,6 +70,7 @@ export default async function handler(request, response) {
       runtime: 'vercel-nodejs',
       error: error instanceof Error ? error.message : 'Healthcheck failed.',
       missingEnv: getMissingEnvKeys(),
+      publicAppUrl: getPublicAppUrl(),
       now: new Date().toISOString(),
     });
   }

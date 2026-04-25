@@ -13,6 +13,10 @@ type ClientRecord = {
   email: string;
   phone: string;
   company: string | null;
+  contact_name: string | null;
+  contact_role: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
   status: Client['status'];
   address_street: string | null;
   address_number: string | null;
@@ -52,6 +56,10 @@ function mapClientRecord(record: ClientRecord): Client {
     email: record.email,
     phone: record.phone,
     company: record.company ?? undefined,
+    contactName: record.contact_name ?? undefined,
+    contactRole: record.contact_role ?? undefined,
+    contactEmail: record.contact_email ?? undefined,
+    contactPhone: record.contact_phone ?? undefined,
     status: record.status,
     address: {
       street: record.address_street ?? '',
@@ -86,6 +94,10 @@ function mapClientInput(client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>, 
     email: client.email,
     phone: client.phone,
     company: client.company ?? null,
+    contact_name: client.contactName ?? null,
+    contact_role: client.contactRole ?? null,
+    contact_email: client.contactEmail ?? null,
+    contact_phone: client.contactPhone ?? null,
     status: client.status,
     address_street: client.address.street,
     address_number: client.address.number,
@@ -151,6 +163,10 @@ export class SupabaseClientRepository extends SupabaseRepository {
     if (data.email !== undefined) payload.email = data.email;
     if (data.phone !== undefined) payload.phone = data.phone;
     if (data.company !== undefined) payload.company = data.company ?? null;
+    if (data.contactName !== undefined) payload.contact_name = data.contactName ?? null;
+    if (data.contactRole !== undefined) payload.contact_role = data.contactRole ?? null;
+    if (data.contactEmail !== undefined) payload.contact_email = data.contactEmail ?? null;
+    if (data.contactPhone !== undefined) payload.contact_phone = data.contactPhone ?? null;
     if (data.status !== undefined) payload.status = data.status;
     if (data.address !== undefined) {
       payload.address_street = data.address.street;

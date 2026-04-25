@@ -21,6 +21,10 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
     email: initialData?.email || '',
     phone: initialData?.phone || '',
     company: initialData?.company || '',
+    contactName: initialData?.contactName || '',
+    contactRole: initialData?.contactRole || '',
+    contactEmail: initialData?.contactEmail || '',
+    contactPhone: initialData?.contactPhone || '',
     status: initialData?.status || 'lead' as Client['status'],
     address: {
       street: initialData?.address?.street || '',
@@ -40,6 +44,7 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
   });
 
   const [tagInput, setTagInput] = useState('');
+  const isCompany = formData.personType.trim().toLowerCase().startsWith('j');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,7 +137,7 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                      {formData.personType === 'Física' ? 'Nome Completo' : 'Razão Social'}
+                      {isCompany ? 'Razão Social' : 'Nome Completo'}
                     </label>
                     <input 
                       required
@@ -140,13 +145,13 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
                       value={formData.name}
                       onChange={e => setFormData({ ...formData, name: e.target.value })}
                       className="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-brand/10 focus:border-brand outline-none transition-all"
-                      placeholder={formData.personType === 'Física' ? "Ex: João Silva" : "Ex: Tech Corp Solutions LTDA"}
+                      placeholder={isCompany ? "Ex: Tech Corp Solutions LTDA" : "Ex: João Silva"}
                     />
                   </div>
 
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                      {formData.personType === 'Física' ? 'CPF' : 'CNPJ'}
+                      {isCompany ? 'CNPJ' : 'CPF'}
                     </label>
                     <input 
                       required
@@ -154,7 +159,7 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
                       value={formData.taxId}
                       onChange={e => setFormData({ ...formData, taxId: e.target.value })}
                       className="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-brand/10 focus:border-brand outline-none transition-all"
-                      placeholder={formData.personType === 'Física' ? "000.000.000-00" : "00.000.000/0001-00"}
+                      placeholder={isCompany ? "00.000.000/0001-00" : "000.000.000-00"}
                     />
                   </div>
                 </div>
@@ -184,7 +189,7 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
                   </div>
                 </div>
 
-                {formData.personType === 'Jurídica' && (
+                {isCompany && (
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Nome Fantasia (Opcional)</label>
                     <input 
@@ -209,6 +214,57 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
                     <option value="inactive">Inativo</option>
                   </select>
                 </div>
+                {isCompany && (
+                  <div className="pt-2 border-t border-gray-50 space-y-4">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                      Contato do Responsavel
+                    </label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Nome do Contato</label>
+                        <input
+                          type="text"
+                          value={formData.contactName}
+                          onChange={e => setFormData({ ...formData, contactName: e.target.value })}
+                          className="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-brand/10 focus:border-brand outline-none transition-all"
+                          placeholder="Ex: Maria Oliveira"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Cargo / Funcao</label>
+                        <input
+                          type="text"
+                          value={formData.contactRole}
+                          onChange={e => setFormData({ ...formData, contactRole: e.target.value })}
+                          className="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-brand/10 focus:border-brand outline-none transition-all"
+                          placeholder="Ex: Financeiro"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">E-mail do Contato</label>
+                        <input
+                          type="email"
+                          value={formData.contactEmail}
+                          onChange={e => setFormData({ ...formData, contactEmail: e.target.value })}
+                          className="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-brand/10 focus:border-brand outline-none transition-all"
+                          placeholder="contato@empresa.com"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Telefone do Contato</label>
+                        <input
+                          type="tel"
+                          value={formData.contactPhone}
+                          onChange={e => setFormData({ ...formData, contactPhone: e.target.value })}
+                          className="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-brand/10 focus:border-brand outline-none transition-all"
+                          placeholder="+55 (11) 99999-9999"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

@@ -14,10 +14,9 @@ Objetivo: preparar o projeto para a migracao para Supabase sem alterar o design 
 
 ### Autenticacao
 
-- origem atual: Firebase Auth
+- origem na epoca da preparacao: Firebase Auth
 - arquivos principais:
   - `src/contexts/AuthContext.tsx`
-  - `src/lib/firebase.ts`
   - `src/pages/Login.tsx`
 
 ### CRM
@@ -91,10 +90,10 @@ Objetivo: preparar o projeto para a migracao para Supabase sem alterar o design 
 ## Riscos mapeados
 
 - regras de permissao e negocio no frontend
-- autenticacao atual acoplada ao Firebase
+- autenticacao originalmente acoplada ao Firebase
 - dados sensiveis sem estrutura LGPD no banco
 - partes do produto ainda mockadas
-- arquivos legados do Firebase ainda presentes no repositorio
+- arquivos legados do Firebase ainda presentes no repositorio no momento da preparacao
 
 ## Proxima etapa
 
