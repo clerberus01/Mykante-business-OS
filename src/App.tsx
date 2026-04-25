@@ -10,6 +10,7 @@ import Settings from './pages/Settings';
 import Finance from './pages/Finance';
 import Communications from './pages/Communications';
 import { useAuth } from './contexts/AuthContext';
+import ContentErrorBoundary from './components/ContentErrorBoundary';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -46,8 +47,9 @@ export default function App() {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      {renderContent()}
+      <ContentErrorBoundary resetKey={activeTab}>
+        {renderContent()}
+      </ContentErrorBoundary>
     </Layout>
   );
 }
-

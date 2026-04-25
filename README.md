@@ -2,11 +2,9 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# Mykante Business OS
 
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/a2d07294-f2e9-4b69-a928-12de495800ac
+Frontend Vite/React do sistema Mykante Business OS.
 
 ## Run Locally
 
@@ -15,6 +13,6 @@ View your app in AI Studio: https://ai.studio/apps/a2d07294-f2e9-4b69-a928-12de4
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Configure the environment variables in `.env.local` if needed
 3. Run the app:
    `npm run dev`

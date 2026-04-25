@@ -22,7 +22,12 @@ import { Client, TimelineEvent, TimelineEventType, Transaction, Proposal } from 
 import Timeline from '../components/Timeline';
 import ClientModal from '../components/ClientModal';
 import { cn, formatDate, formatCurrency } from '../lib/utils';
-import { useClients, useEvents, useTransactions, useProposals } from '../hooks/useFirebase';
+import {
+  useSupabaseClients as useClients,
+  useSupabaseEvents as useEvents,
+  useSupabaseTransactions as useTransactions,
+  useSupabaseProposals as useProposals,
+} from '../hooks/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function CRM() {
@@ -73,24 +78,48 @@ export default function CRM() {
       });
       setActionContent('');
       setActiveAction(null);
+    } catch (error) {
+      console.error('CRM event creation failed:', error);
+      window.alert('Nao foi possivel registrar a acao na timeline.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleSaveClient = async (data: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) => {
-    if (editingClient) {
-      await updateClient(editingClient.id, data);
-    } else {
-      await addClient(data);
+    try {
+      if (editingClient) {
+        await updateClient(editingClient.id, data);
+      } else {
+        await addClient(data);
+      }
+      setEditingClient(undefined);
+    } catch (error) {
+      console.error('CRM client save failed:', error);
+      window.alert('Nao foi possivel salvar o cliente.');
     }
-    setEditingClient(undefined);
   };
 
   const handleDeleteClient = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    await deleteClient(id);
-    if (selectedClientId === id) setSelectedClientId(null);
+    e.preventDefault();
+
+    try {
+      await deleteClient(id);
+      if (selectedClientId === id) setSelectedClientId(null);
+    } catch (error) {
+      console.error('CRM client deletion failed:', error);
+      window.alert('Nao foi possivel excluir o cliente.');
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    try {
+      await deleteEvent(eventId);
+    } catch (error) {
+      console.error('CRM event deletion failed:', error);
+      window.alert('Nao foi possivel excluir o evento.');
+    }
   };
 
   if (loadingClients) {
@@ -126,6 +155,7 @@ export default function CRM() {
             <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">Registros</h3>
             {isAdmin && (
               <button 
+                type="button"
                 onClick={() => {
                   setEditingClient(undefined);
                   setShowClientModal(true);
@@ -137,9 +167,8 @@ export default function CRM() {
             )}
           </div>
           {filteredClients.map((client) => (
-            <button
+            <div
               key={client.id}
-              onClick={() => setSelectedClientId(client.id)}
               className={cn(
                 "w-full p-3 rounded flex flex-col gap-0.5 transition-all duration-150 text-left border border-transparent group relative",
                 selectedClientId === client.id 
@@ -147,24 +176,32 @@ export default function CRM() {
                   : "hover:bg-gray-50"
               )}
             >
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-os-text text-[11px] leading-tight">{client.name}</span>
-                <span className={cn(
-                   "w-1.5 h-1.5 rounded-full shadow-sm",
-                   client.status === 'active' ? "bg-green-500" : "bg-gray-300"
-                 )} />
-              </div>
-              <span className="text-[10px] text-gray-400 font-mono truncate">{client.company || 'Cliente Particular'}</span>
+              <button
+                type="button"
+                onClick={() => setSelectedClientId(client.id)}
+                className="w-full pr-12 text-left"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-os-text text-[11px] leading-tight">{client.name}</span>
+                  <span className={cn(
+                     "w-1.5 h-1.5 rounded-full shadow-sm",
+                     client.status === 'active' ? "bg-green-500" : "bg-gray-300"
+                   )} />
+                </div>
+                <span className="text-[10px] text-gray-400 font-mono truncate block">{client.company || 'Cliente Particular'}</span>
+              </button>
               
               {isAdmin && (
                 <div className="absolute right-2 bottom-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button 
-                    onClick={(e) => { e.stopPropagation(); setEditingClient(client); setShowClientModal(true); }}
+                    type="button"
+                    onClick={() => { setEditingClient(client); setShowClientModal(true); }}
                     className="p-1 text-gray-400 hover:text-os-text"
                   >
                     <Plus className="w-3 h-3 rotate-45" />
                   </button>
                   <button 
+                    type="button"
                     onClick={(e) => handleDeleteClient(client.id, e)}
                     className="p-1 text-gray-300 hover:text-red-500"
                   >
@@ -172,7 +209,7 @@ export default function CRM() {
                   </button>
                 </div>
               )}
-            </button>
+            </div>
           ))}
           {filteredClients.length === 0 && (
             <div className="py-20 text-center px-4">
@@ -207,6 +244,7 @@ export default function CRM() {
                     </div>
                     <div className="flex gap-1">
                       <button 
+                        type="button"
                         onClick={() => { setEditingClient(selectedClient); setShowClientModal(true); }}
                         className="p-2 text-gray-400 hover:text-os-text rounded hover:bg-gray-50 transition-all"
                       >
@@ -220,11 +258,11 @@ export default function CRM() {
                     {selectedClient.taxId}
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    <button className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-gray-100 rounded text-[10px] font-mono text-gray-500 hover:bg-gray-100 transition-colors">
+                    <button type="button" className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-gray-100 rounded text-[10px] font-mono text-gray-500 hover:bg-gray-100 transition-colors">
                       <Mail className="w-3 h-3 text-gray-300" />
                       {selectedClient.email}
                     </button>
-                    <button className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-gray-100 rounded text-[10px] font-mono text-gray-500 hover:bg-gray-100 transition-colors">
+                    <button type="button" className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-gray-100 rounded text-[10px] font-mono text-gray-500 hover:bg-gray-100 transition-colors">
                       <Phone className="w-3 h-3 text-gray-300" />
                       {selectedClient.phone}
                     </button>
@@ -252,6 +290,7 @@ export default function CRM() {
               {/* Navigation Tabs (Specific to Client) */}
               <div className="px-6 border-b border-gray-100 bg-white/50 backdrop-blur-sm flex">
                  <button 
+                  type="button"
                   onClick={() => setActiveTab('timeline')}
                   className={cn(
                     "px-4 py-3 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all",
@@ -259,6 +298,7 @@ export default function CRM() {
                   )}
                  >Timeline</button>
                  <button 
+                  type="button"
                   onClick={() => setActiveTab('proposals')}
                   className={cn(
                     "px-4 py-3 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all",
@@ -272,6 +312,7 @@ export default function CRM() {
                   {/* Action Toolbar */}
                   <div className="px-6 py-3 border-b border-gray-100 flex gap-2 bg-white/50 backdrop-blur-sm z-10">
                 <button 
+                  type="button"
                   onClick={() => setActiveAction(activeAction === 'note' ? null : 'note')}
                   className={cn(
                     "flex items-center gap-2 px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-all",
@@ -282,6 +323,7 @@ export default function CRM() {
                   Adicionar Nota
                 </button>
                 <button 
+                  type="button"
                   onClick={() => setActiveAction(activeAction === 'email' ? null : 'email')}
                   className={cn(
                     "flex items-center gap-2 px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-all",
@@ -292,6 +334,7 @@ export default function CRM() {
                   Reenviar Integração
                 </button>
                 <button 
+                  type="button"
                   onClick={() => setActiveAction(activeAction === 'whatsapp' ? null : 'whatsapp')}
                   className={cn(
                     "flex items-center gap-2 px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-all",
@@ -321,12 +364,13 @@ export default function CRM() {
                       className="w-full resize-none border-none focus:ring-0 text-[11px] font-medium min-h-[80px] p-0 placeholder:text-gray-300"
                     />
                     <div className="flex items-center justify-between pt-3 border-t border-gray-50 mt-2">
-                      <button className="p-1 px-2 text-gray-400 hover:text-os-text rounded text-[10px] font-bold uppercase flex items-center gap-1 group">
+                      <button type="button" className="p-1 px-2 text-gray-400 hover:text-os-text rounded text-[10px] font-bold uppercase flex items-center gap-1 group">
                         <Paperclip className="w-3 h-3 group-hover:rotate-45 transition-transform" />
                         Anexar
                       </button>
                       <div className="flex gap-2">
                         <button 
+                          type="button"
                           onClick={() => {
                             setActiveAction(null);
                             setActionContent('');
@@ -336,6 +380,7 @@ export default function CRM() {
                           Cancelar
                         </button>
                         <button 
+                          type="button"
                           onClick={handleAddEvent}
                           disabled={isSubmitting || !actionContent.trim()}
                           className="px-4 py-1.5 rounded bg-brand text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-2 hover:bg-os-dark transition-all disabled:opacity-50 shadow-sm"
@@ -366,7 +411,7 @@ export default function CRM() {
                             <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">Log de Histórico</h3>
                             <span className="text-[10px] font-mono text-gray-300">{events.length} EVENTOS_REGISTRADOS</span>
                         </div>
-                        <Timeline events={events} onDelete={deleteEvent} />
+                        <Timeline events={events} onDelete={handleDeleteEvent} />
                       </div>
                     )
                   ) : (
@@ -392,11 +437,12 @@ export default function CRM() {
                                <div className="flex gap-2">
                                   {proposal.status !== 'accepted' && (
                                     <button 
+                                      type="button"
                                       onClick={() => updateProposal(proposal.id, { status: 'accepted' })}
                                       className="flex-1 py-2 bg-green-500 text-white rounded text-[9px] font-black uppercase tracking-widest hover:bg-green-600 transition-all shadow-sm shadow-green-200"
                                     >Aceitar</button>
                                   )}
-                                  <button className="flex-1 py-2 bg-gray-50 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-100 rounded">Visualizar</button>
+                                  <button type="button" className="flex-1 py-2 bg-gray-50 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-100 rounded">Visualizar</button>
                                </div>
                             </div>
                           ))}

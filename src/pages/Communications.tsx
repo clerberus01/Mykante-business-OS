@@ -26,6 +26,16 @@ export default function Communications() {
 
   const currentChat = chats.find(c => c.id === activeChat) || chats[0];
 
+  if (!currentChat) {
+    return (
+      <div className="h-full flex items-center justify-center bg-white rounded border border-gray-100 shadow-sm">
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-300">
+          Nenhuma conversa disponível.
+        </p>
+      </div>
+    );
+  }
+
   const messages = [
     { id: 'm1', text: 'Olá João, tudo bem?', sender: 'me', time: '09:00' },
     { id: 'm2', text: 'Tudo ótimo! Recebemos o briefing.', sender: 'them', time: '09:15' },

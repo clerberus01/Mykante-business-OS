@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Loader2, Calendar, Target, DollarSign, Users, Info } from 'lucide-react';
 import { Project, ProjectStatus, PaymentStatus } from '../types';
 import { cn } from '../lib/utils';
-import { useClients } from '../hooks/useFirebase';
+import { useSupabaseClients as useClients } from '../hooks/supabase';
 
 interface ProjectModalProps {
   onClose: () => void;
@@ -57,7 +57,7 @@ export default function ProjectModal({ onClose, onSave, initialData }: ProjectMo
             </h2>
             <p className="text-[10px] font-mono text-gray-400 font-bold uppercase mt-1">Configuração de camada estrutural</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-50 rounded-full text-gray-400">
+          <button type="button" onClick={onClose} className="p-2 hover:bg-gray-50 rounded-full text-gray-400">
             <X className="w-5 h-5" />
           </button>
         </div>

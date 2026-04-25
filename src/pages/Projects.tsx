@@ -10,7 +10,7 @@ import {
 import { Project } from '../types';
 import ProjectCard from '../components/ProjectCard';
 import { cn } from '../lib/utils';
-import { useProjects } from '../hooks/useFirebase';
+import { useSupabaseProjects as useProjects } from '../hooks/supabase';
 import ProjectDetail from './ProjectDetail';
 import ProjectModal from '../components/ProjectModal';
 
@@ -22,16 +22,40 @@ export default function Projects() {
   const [showModal, setShowModal] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | undefined>(undefined);
 
-  const selectedProject = projects.find(p => p.id === selectedProjectId);
+  const normalizedProjects = projects.filter((project): project is Project => Boolean(project && project.id)).map((project) => ({
+    ...project,
+    id: typeof project.id === 'string' ? project.id : String(project.id),
+    name: project.name || 'Projeto sem nome',
+    description: project.description || '',
+    status: project.status || 'draft',
+    startDate: typeof project.startDate === 'number' ? project.startDate : Date.now(),
+    deadline: typeof project.deadline === 'number' ? project.deadline : Date.now(),
+    budget: typeof project.budget === 'number' && Number.isFinite(project.budget) ? project.budget : 0,
+  }));
+
+  const selectedProject = normalizedProjects.find(p => p.id === selectedProjectId);
 
   if (selectedProject) {
     return <ProjectDetail project={selectedProject} onBack={() => setSelectedProjectId(null)} />;
   }
 
-  const filteredProjects = projects.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.description.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredProjects = normalizedProjects.filter(p => 
+    (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.description || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-[10px] font-mono font-bold tracking-[0.3em] uppercase opacity-40">
+            Loading Projects...
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -47,6 +71,7 @@ export default function Projects() {
         <div className="flex items-center gap-2">
            <div className="flex bg-white border border-gray-100 rounded p-1 shadow-sm">
               <button 
+                type="button"
                 onClick={() => setView('grid')}
                 className={cn(
                   "p-1.5 rounded transition-all",
@@ -56,6 +81,7 @@ export default function Projects() {
                 <LayoutGrid className="w-4 h-4" />
               </button>
               <button 
+                type="button"
                 onClick={() => setView('list')}
                 className={cn(
                   "p-1.5 rounded transition-all",
@@ -66,6 +92,7 @@ export default function Projects() {
               </button>
            </div>
             <button 
+              type="button"
               onClick={() => { setEditingProject(undefined); setShowModal(true); }}
               className="bg-brand text-white text-[10px] px-4 py-2 rounded font-bold hover:bg-os-dark transition-all uppercase tracking-wider flex items-center gap-2 shadow-sm shadow-brand/20"
             >
@@ -86,7 +113,7 @@ export default function Projects() {
             className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-transparent rounded text-xs focus:bg-white focus:border-gray-200 outline-none transition-all"
           />
         </div>
-        <button className="flex items-center gap-2 px-3 py-2 text-gray-500 hover:text-os-text text-[10px] font-bold uppercase tracking-widest border border-transparent hover:bg-gray-50 rounded transition-all">
+        <button type="button" className="flex items-center gap-2 px-3 py-2 text-gray-500 hover:text-os-text text-[10px] font-bold uppercase tracking-widest border border-transparent hover:bg-gray-50 rounded transition-all">
           <Filter className="w-3.5 h-3.5" />
           Filtros
         </button>
@@ -100,6 +127,7 @@ export default function Projects() {
             </div>
           ))}
           <button 
+            type="button"
             onClick={() => { setEditingProject(undefined); setShowModal(true); }}
             className="border-2 border-dashed border-gray-200 rounded p-12 flex flex-col items-center justify-center gap-3 grayscale opacity-30 hover:opacity-100 hover:border-brand hover:grayscale-0 transition-all group"
           >
@@ -142,7 +170,7 @@ export default function Projects() {
                     R$ {project.budget.toLocaleString()}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button className="text-gray-300 hover:text-os-text opacity-0 group-hover:opacity-100 transition-all">
+                    <button type="button" className="text-gray-300 hover:text-os-text opacity-0 group-hover:opacity-100 transition-all">
                       <MoreHorizontal className="w-4 h-4" />
                     </button>
                   </td>

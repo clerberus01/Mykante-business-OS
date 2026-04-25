@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getAuth, signInAnonymously, signOut as firebaseSignOut } from 'firebase/auth';
 import { 
   getFirestore, 
   doc, 
@@ -19,7 +19,6 @@ import firebaseConfig from '../../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
 
 // Custom Error Interface
 export interface FirestoreErrorInfo {
@@ -61,6 +60,36 @@ export function handleFirestoreError(error: any, operationType: FirestoreErrorIn
   throw new Error(errorString);
 }
 
+export function reportFirestoreError(
+  error: any,
+  operationType: FirestoreErrorInfo['operationType'],
+  path: string | null = null,
+) {
+  const firestoreError = error as FirestoreError;
+  const user = auth.currentUser;
+
+  const errorInfo: FirestoreErrorInfo = {
+    error: firestoreError.message || 'Unknown Firestore error',
+    operationType,
+    path,
+    authInfo: {
+      userId: user?.uid || 'anonymous',
+      email: user?.email || 'none',
+      emailVerified: user?.emailVerified || false,
+      isAnonymous: user?.isAnonymous || true,
+      providerInfo:
+        user?.providerData.map((p) => ({
+          providerId: p.providerId,
+          displayName: p.displayName || '',
+          email: p.email || '',
+        })) || [],
+    },
+  };
+
+  console.error('Firestore Warning:', JSON.stringify(errorInfo));
+  return errorInfo;
+}
+
 // Connection test
 async function testConnection() {
   try {
@@ -78,5 +107,19 @@ if (typeof window !== 'undefined') {
   testConnection();
 }
 
-export const signIn = () => signInWithPopup(auth, googleProvider);
-export const logout = () => signOut(auth);
+export async function ensureLegacyFirebaseReadSession() {
+  if (auth.currentUser) {
+    return auth.currentUser;
+  }
+
+  const result = await signInAnonymously(auth);
+  return result.user;
+}
+
+export async function closeLegacyFirebaseSession() {
+  if (!auth.currentUser) {
+    return;
+  }
+
+  await firebaseSignOut(auth);
+}

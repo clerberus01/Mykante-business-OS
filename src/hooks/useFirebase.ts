@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, addDoc, updateDoc, deleteDoc, limit, where, getDoc, getDocs } from 'firebase/firestore';
-import { db, handleFirestoreError } from '../lib/firebase';
+import { db, handleFirestoreError, reportFirestoreError } from '../lib/firebase';
 import { Client, TimelineEvent, Project, Milestone, Task, ActivityLog, Proposal, Transaction } from '../types';
 
 export function useClients() {
@@ -14,7 +14,9 @@ export function useClients() {
       setClients(clientsData);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, 'list', 'clients');
+      reportFirestoreError(error, 'list', 'clients');
+      setClients([]);
+      setLoading(false);
     });
 
     return unsubscribe;
@@ -64,6 +66,7 @@ export function useEvents(clientId: string | null) {
   useEffect(() => {
     if (!clientId) {
       setEvents([]);
+      setLoading(false);
       return;
     }
 
@@ -74,7 +77,9 @@ export function useEvents(clientId: string | null) {
       setEvents(eventsData);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, 'list', `clients/${clientId}/events`);
+      reportFirestoreError(error, 'list', `clients/${clientId}/events`);
+      setEvents([]);
+      setLoading(false);
     });
 
     return unsubscribe;
@@ -116,7 +121,8 @@ export function useProjects() {
       setProjects(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)));
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, 'list', 'projects');
+      reportFirestoreError(error, 'list', 'projects');
+      setProjects([]);
       setLoading(false);
     });
     return unsubscribe;
@@ -158,6 +164,7 @@ export function useMilestones(projectId: string | null) {
 
   useEffect(() => {
     if (!projectId) {
+      setMilestones([]);
       setLoading(false);
       return;
     }
@@ -166,7 +173,9 @@ export function useMilestones(projectId: string | null) {
       setMilestones(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Milestone)));
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, 'list', 'milestones');
+      reportFirestoreError(error, 'list', 'milestones');
+      setMilestones([]);
+      setLoading(false);
     });
     return unsubscribe;
   }, [projectId]);
@@ -202,6 +211,7 @@ export function useTasks(projectId: string | null) {
 
   useEffect(() => {
     if (!projectId) {
+      setTasks([]);
       setLoading(false);
       return;
     }
@@ -210,7 +220,9 @@ export function useTasks(projectId: string | null) {
       setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task)));
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, 'list', 'tasks');
+      reportFirestoreError(error, 'list', 'tasks');
+      setTasks([]);
+      setLoading(false);
     });
     return unsubscribe;
   }, [projectId]);
@@ -280,13 +292,24 @@ export function useProposals() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadProposals = useCallback(async () => {
     const q = query(collection(db, 'proposals'), orderBy('createdAt', 'desc'));
-    return onSnapshot(q, (snapshot) => {
+    setLoading(true);
+
+    try {
+      const snapshot = await getDocs(q);
       setProposals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Proposal)));
+    } catch (error) {
+      reportFirestoreError(error, 'list', 'proposals');
+      setProposals([]);
+    } finally {
       setLoading(false);
-    });
+    }
   }, []);
+
+  useEffect(() => {
+    void loadProposals();
+  }, [loadProposals]);
 
   const addProposal = async (data: Omit<Proposal, 'id' | 'createdAt' | 'updatedAt'>) => {
     const now = Date.now();
@@ -295,6 +318,7 @@ export function useProposals() {
       createdAt: now,
       updatedAt: now
     });
+    await loadProposals();
   };
 
   const updateProposal = async (id: string, data: Partial<Proposal>) => {
@@ -335,6 +359,8 @@ export function useProposals() {
       ...data,
       updatedAt: now
     });
+
+    await loadProposals();
   };
 
   return { proposals, loading, addProposal, updateProposal };
@@ -344,16 +370,24 @@ export function useTransactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadTransactions = useCallback(async () => {
     const q = query(collection(db, 'transactions'), orderBy('date', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    setLoading(true);
+
+    try {
+      const snapshot = await getDocs(q);
       setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
+    } catch (error) {
+      reportFirestoreError(error, 'list', 'transactions');
+      setTransactions([]);
+    } finally {
       setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, 'list', 'transactions');
-    });
-    return unsubscribe;
+    }
   }, []);
+
+  useEffect(() => {
+    void loadTransactions();
+  }, [loadTransactions]);
 
   const addTransaction = async (data: Omit<Transaction, 'id' | 'createdAt'>) => {
     try {
@@ -362,6 +396,7 @@ export function useTransactions() {
         createdAt: Date.now(),
       });
       await updateDoc(docRef, { id: docRef.id });
+      await loadTransactions();
     } catch (error) {
       handleFirestoreError(error, 'create', 'transactions');
     }
@@ -370,6 +405,7 @@ export function useTransactions() {
   const updateTransaction = async (id: string, data: Partial<Transaction>) => {
     try {
       await updateDoc(doc(db, 'transactions', id), data);
+      await loadTransactions();
     } catch (error) {
       handleFirestoreError(error, 'update', 'transactions');
     }

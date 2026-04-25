@@ -11,7 +11,7 @@ import {
   Link2
 } from 'lucide-react';
 import { Transaction, TransactionType, TransactionStatus } from '../types';
-import { useClients, useProjects } from '../hooks/useFirebase';
+import { useSupabaseClients as useClients, useSupabaseProjects as useProjects } from '../hooks/supabase';
 import { cn } from '../lib/utils';
 
 interface TransactionModalProps {
@@ -71,7 +71,7 @@ export default function TransactionModal({ onClose, onSave, initialData }: Trans
             </h2>
             <p className="text-[10px] font-mono text-gray-400 font-bold uppercase mt-1">Controle de regime de caixa</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-50 rounded-full text-gray-400">
+          <button type="button" onClick={onClose} className="p-2 hover:bg-gray-50 rounded-full text-gray-400">
             <X className="w-5 h-5" />
           </button>
         </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Target, Calendar, BarChart2 } from 'lucide-react';
+import { Target, Calendar } from 'lucide-react';
 import { Project } from '../types';
 import { formatCurrency, formatDate, cn } from '../lib/utils';
 
@@ -20,41 +20,52 @@ const STATUS_LABELS = {
 };
 
 export default function ProjectCard({ project, onClick }: { project: Project, onClick?: () => void }) {
+  const projectStatus = Object.hasOwn(STATUS_COLORS, project.status) ? project.status : 'draft';
+  const projectId = typeof project.id === 'string' ? project.id : 'sem-id';
+  const projectName = project.name || 'Projeto sem nome';
+  const projectDescription = project.description || 'Sem descrição cadastrada.';
+  const projectStartDate =
+    typeof project.startDate === 'number' || typeof project.startDate === 'string'
+      ? formatDate(project.startDate)
+      : '--/--/----';
+  const projectBudget =
+    typeof project.budget === 'number' && Number.isFinite(project.budget)
+      ? formatCurrency(project.budget)
+      : formatCurrency(0);
+
   return (
     <div 
       onClick={onClick}
       className={cn(
         "bg-white p-4 rounded border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 group flex flex-col cursor-pointer hover:border-brand/20",
-        project.status === 'completed' && "opacity-80"
+        projectStatus === 'completed' && "opacity-80"
       )}
     >
       <div className="flex items-start justify-between mb-3">
         <span className={cn(
           "text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider",
-          STATUS_COLORS[project.status]
+          STATUS_COLORS[projectStatus]
         )}>
-          {STATUS_LABELS[project.status]}
+          {STATUS_LABELS[projectStatus]}
         </span>
-        <span className="text-[10px] font-mono text-gray-400">#{project.id.slice(0, 5)}</span>
+        <span className="text-[10px] font-mono text-gray-400">#{projectId.slice(0, 5)}</span>
       </div>
       
-      <h3 className="font-bold text-os-text text-sm mb-1 leading-tight">{project.name}</h3>
+      <h3 className="font-bold text-os-text text-sm mb-1 leading-tight">{projectName}</h3>
       <p className="text-gray-500 text-[11px] mb-4 line-clamp-2 leading-normal flex-1">
-        {project.description}
+        {projectDescription}
       </p>
 
       <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-50">
         <div className="flex items-center gap-1.5 grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100 transition-all">
           <Calendar className="w-3 h-3 text-brand" />
-          <span className="text-[10px] font-mono font-medium text-gray-600">{formatDate(project.startDate)}</span>
+          <span className="text-[10px] font-mono font-medium text-gray-600">{projectStartDate}</span>
         </div>
         <div className="flex items-center gap-1.5 text-right justify-end grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100 transition-all">
           <Target className="w-3 h-3 text-brand" />
-          <span className="text-[10px] font-mono font-bold text-gray-800">{formatCurrency(project.budget)}</span>
+          <span className="text-[10px] font-mono font-bold text-gray-800">{projectBudget}</span>
         </div>
       </div>
     </div>
   );
 }
-
-import { Briefcase } from 'lucide-react';

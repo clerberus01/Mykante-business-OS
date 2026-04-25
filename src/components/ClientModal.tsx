@@ -395,7 +395,7 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
                     value={formData.origin}
                     onChange={e => setFormData({ ...formData, origin: e.target.value })}
                     className="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 text-xs font-medium focus:bg-white outline-none transition-all"
-                    placeholder="Ex: Indicação, Google Ads, Evento..."
+                    placeholder="Ex: Indicação, Mídia Paga, Evento..."
                   />
                 </div>
               </div>
@@ -451,4 +451,3 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
 
 // Helper icon not imported
 // (removed duplicate)
-

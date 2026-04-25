@@ -20,6 +20,18 @@ const COLOR_MAP = {
 };
 
 export default function Timeline({ events, onDelete }: { events: TimelineEvent[], onDelete?: (id: string) => void }) {
+  const handleDeleteClick = (eventId: string) => {
+    if (!onDelete) {
+      return;
+    }
+
+    if (!window.confirm('Deseja realmente excluir este evento da timeline?')) {
+      return;
+    }
+
+    onDelete(eventId);
+  };
+
   if (events.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-gray-400">
@@ -58,8 +70,11 @@ export default function Timeline({ events, onDelete }: { events: TimelineEvent[]
                 </div>
                 {onDelete && (
                   <button 
-                    onClick={() => onDelete(event.id)}
+                    type="button"
+                    onClick={() => handleDeleteClick(event.id)}
                     className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition-all"
+                    title="Excluir evento"
+                    aria-label="Excluir evento"
                   >
                     <MoreVertical className="w-3 h-3" />
                   </button>

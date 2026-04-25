@@ -158,3 +158,20 @@ export interface InvoiceItem {
   unitPrice: number;
   total: number;
 }
+
+export interface StoredDocument {
+  id: string;
+  bucketId: string;
+  storagePath: string;
+  fileName: string;
+  displayName: string;
+  fileExtension?: string;
+  mimeType?: string;
+  sizeBytes: number;
+  folder: string;
+  clientId?: string;
+  projectId?: string;
+  proposalId?: string;
+  createdAt: number;
+  updatedAt: number;
+}

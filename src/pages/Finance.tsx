@@ -34,7 +34,11 @@ import {
   Bar,
   Cell
 } from 'recharts';
-import { useTransactions, useClients, useProjects } from '../hooks/useFirebase';
+import {
+  useSupabaseTransactions as useTransactions,
+  useSupabaseClients as useClients,
+  useSupabaseProjects as useProjects,
+} from '../hooks/supabase';
 import { Transaction, TransactionStatus } from '../types';
 import TransactionModal from '../components/TransactionModal';
 
@@ -116,10 +120,11 @@ export default function Finance() {
           </div>
 
           <div className="flex items-center gap-2">
-             <button className="bg-white border border-gray-100 p-2 rounded text-gray-400 hover:text-os-text transition-all shadow-sm">
+             <button type="button" className="bg-white border border-gray-100 p-2 rounded text-gray-400 hover:text-os-text transition-all shadow-sm">
                <Download className="w-4 h-4" />
              </button>
              <button 
+               type="button"
                onClick={() => { setEditingTransaction(undefined); setShowModal(true); }}
                className="bg-brand text-white text-[10px] px-4 py-2 rounded font-black hover:bg-os-dark transition-all uppercase tracking-widest flex items-center gap-2 shadow-sm shadow-brand/20"
              >
@@ -160,6 +165,7 @@ export default function Finance() {
             { id: 'reconciliation', label: 'Conciliação Bancária', icon: FileUp },
           ].map(tab => (
             <button
+              type="button"
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
               className={cn(
@@ -274,6 +280,7 @@ export default function Finance() {
                                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
                                            {tx.type === 'income' && tx.status === 'pending' && (
                                               <button 
+                                                type="button"
                                                 onClick={() => handleQuickCollection(tx)}
                                                 className="p-1 text-green-500 hover:bg-green-50 rounded"
                                                 title="Cobrança Rápida (WhatsApp)"
@@ -281,7 +288,7 @@ export default function Finance() {
                                                  <MessageSquare className="w-4 h-4" />
                                               </button>
                                            )}
-                                           <button onClick={() => { setEditingTransaction(tx); setShowModal(true); }} className="p-1 text-gray-300 hover:text-os-text"><MoreHorizontal className="w-4 h-4" /></button>
+                                           <button type="button" onClick={() => { setEditingTransaction(tx); setShowModal(true); }} className="p-1 text-gray-300 hover:text-os-text"><MoreHorizontal className="w-4 h-4" /></button>
                                         </div>
                                      </td>
                                   </tr>
@@ -339,7 +346,7 @@ export default function Finance() {
                              <div className="w-2 h-2 rounded-full bg-os-highlight animate-pulse"></div>
                           </div>
                        </div>
-                       <button className="w-full mt-6 py-2 bg-white/10 hover:bg-white/20 rounded text-[9px] font-black uppercase tracking-widest transition-all">Configurar Webhooks</button>
+                       <button type="button" className="w-full mt-6 py-2 bg-white/10 hover:bg-white/20 rounded text-[9px] font-black uppercase tracking-widest transition-all">Configurar Webhooks</button>
                     </div>
                  </div>
               </div>
@@ -386,6 +393,7 @@ export default function Finance() {
                             <div className="flex gap-2">
                                {tx.status === 'pending' && (
                                   <button 
+                                    type="button"
                                     onClick={() => updateTransaction(tx.id, { status: 'liquidated' })}
                                     className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all shadow-lg shadow-green-500/20"
                                     title="Marcar como Pago"
@@ -395,6 +403,7 @@ export default function Finance() {
                                )}
                                {tx.type === 'income' && tx.status === 'pending' && (
                                   <button 
+                                    type="button"
                                     onClick={() => handleQuickCollection(tx)}
                                     className="p-2 border border-green-500 text-green-500 rounded-lg hover:bg-green-50 transition-all"
                                     title="Cobrança Rápida"
@@ -420,7 +429,7 @@ export default function Finance() {
                        <h3 className="text-lg font-black text-os-text uppercase">Upload de Extrato Bancário</h3>
                        <p className="text-xs text-gray-400 mt-2">Arraste arquivos OFX ou CSV para iniciar a conciliação automática via AI</p>
                     </div>
-                    <button className="mt-4 px-6 py-2 bg-os-dark text-white rounded text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all">Selecionar Arquivo</button>
+                    <button type="button" className="mt-4 px-6 py-2 bg-os-dark text-white rounded text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all">Selecionar Arquivo</button>
                  </div>
 
                  <div className="space-y-4">

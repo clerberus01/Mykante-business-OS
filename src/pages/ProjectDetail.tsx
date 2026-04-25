@@ -22,7 +22,13 @@ import {
 } from 'lucide-react';
 import { Project, Milestone, TaskStatus, Task, Transaction } from '../types';
 import { cn, formatDate, formatCurrency } from '../lib/utils';
-import { useMilestones, useTasks, useProjectActivity, useClients, useTransactions } from '../hooks/useFirebase';
+import {
+  useSupabaseMilestones as useMilestones,
+  useSupabaseTasks as useTasks,
+  useSupabaseProjectActivity as useProjectActivity,
+  useSupabaseClients as useClients,
+  useSupabaseTransactions as useTransactions,
+} from '../hooks/supabase';
 
 interface ProjectDetailProps {
   project: Project;
@@ -112,7 +118,7 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
       <div className="bg-white border-b border-gray-100 p-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
-             <button onClick={onBack} className="p-2 hover:bg-gray-50 rounded-full text-gray-400">
+             <button type="button" onClick={onBack} className="p-2 hover:bg-gray-50 rounded-full text-gray-400">
                 <ChevronRight className="w-5 h-5 rotate-180" />
              </button>
              <div>
@@ -178,6 +184,7 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
             { id: 'activity', label: 'Log Técnico', icon: History },
           ].map(tab => (
             <button
+              type="button"
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
               className={cn(
@@ -271,10 +278,12 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
                                     </select>
                                     <div className="flex gap-2">
                                        <button 
+                                          type="button"
                                           onClick={() => setShowNewTask(false)}
                                           className="flex-1 py-2 text-[8px] font-black uppercase text-gray-400"
                                        >Cancelar</button>
                                        <button 
+                                          type="button"
                                           onClick={handleAddTask}
                                           disabled={!newTaskTitle || !selectedMilestoneId}
                                           className="flex-[2] py-2 bg-brand text-white text-[8px] font-black uppercase rounded shadow-sm disabled:opacity-50"
@@ -283,6 +292,7 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
                                  </div>
                               ) : (
                                  <button 
+                                    type="button"
                                     onClick={() => setShowNewTask(true)}
                                     className="w-full py-3 border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center gap-2 text-gray-300 hover:text-brand hover:border-brand transition-all"
                                  >
@@ -312,11 +322,12 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
                            className="px-3 py-1.5 bg-white border border-gray-200 rounded text-[10px] font-bold outline-none focus:border-brand"
                            placeholder="Título da etapa..."
                          />
-                         <button onClick={handleAddMilestone} className="px-3 py-1.5 bg-brand text-white rounded text-[9px] font-bold uppercase">Confirmar</button>
-                         <button onClick={() => setShowNewMilestone(false)} className="text-gray-400"><X className="w-4 h-4" /></button>
+                         <button type="button" onClick={handleAddMilestone} className="px-3 py-1.5 bg-brand text-white rounded text-[9px] font-bold uppercase">Confirmar</button>
+                         <button type="button" onClick={() => setShowNewMilestone(false)} className="text-gray-400"><X className="w-4 h-4" /></button>
                       </div>
                    ) : (
                       <button 
+                        type="button"
                         onClick={() => setShowNewMilestone(true)}
                         className="px-3 py-1.5 bg-os-dark text-white rounded text-[9px] font-bold uppercase tracking-widest hover:bg-black transition-all flex items-center gap-2"
                       >
@@ -341,6 +352,7 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
                         </div>
                         <div className="flex items-center gap-4">
                            <button 
+                             type="button"
                              onClick={() => handleMilestoneToggle(milestone)}
                              className={cn(
                                "px-4 py-2 rounded text-[9px] font-black uppercase tracking-[0.2em] transition-all",
@@ -391,7 +403,7 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 transition-all"><Plus className="w-24 h-24" /></div>
                        <h3 className="text-[10px] font-black uppercase tracking-widest mb-2 relative z-10">Solicitar Adiantamento</h3>
                        <p className="text-[10px] text-gray-400 mb-6 relative z-10">Gere um link de pagamento rápido para o cliente com um clique.</p>
-                       <button className="w-full py-2.5 bg-brand text-white rounded text-[10px] font-black uppercase tracking-widest relative z-10">Gerar Link PIX</button>
+                       <button type="button" className="w-full py-2.5 bg-brand text-white rounded text-[10px] font-black uppercase tracking-widest relative z-10">Gerar Link PIX</button>
                     </div>
                  </div>
 
@@ -453,12 +465,12 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
                         <p className="text-[9px] font-mono text-gray-400 uppercase mt-1">{file.size} • {file.type}</p>
                      </div>
                      <div className="flex gap-2">
-                        <button className="flex-1 py-1.5 bg-gray-50 text-[8px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-100 rounded">DOWNLOAD</button>
-                        <button className="flex-1 py-1.5 bg-gray-50 text-[8px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-100 rounded">VISUALIZAR</button>
+                        <button type="button" className="flex-1 py-1.5 bg-gray-50 text-[8px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-100 rounded">DOWNLOAD</button>
+                        <button type="button" className="flex-1 py-1.5 bg-gray-50 text-[8px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-100 rounded">VISUALIZAR</button>
                      </div>
                   </div>
                 ))}
-                <button className="border-2 border-dashed border-gray-200 rounded-xl p-8 flex flex-col items-center justify-center gap-3 opacity-30 hover:opacity-100 hover:border-brand transition-all">
+                <button type="button" className="border-2 border-dashed border-gray-200 rounded-xl p-8 flex flex-col items-center justify-center gap-3 opacity-30 hover:opacity-100 hover:border-brand transition-all">
                    <Plus className="w-6 h-6 text-gray-400" />
                    <span className="text-[10px] font-black uppercase tracking-widest">Upload Mídia</span>
                 </button>
