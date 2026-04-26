@@ -11,3 +11,4 @@ export { useSupabaseDocuments } from './useDocuments';
 export { useSupabaseNotifications } from './useNotifications';
 export { useSupabasePrivacy } from './usePrivacy';
 export { useSupabaseDashboard } from './useDashboard';
+export { useSupabaseWhatsapp } from './useWhatsapp';

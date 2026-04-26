@@ -6,4 +6,8 @@ export {
 } from './finance/transactionRepository';
 export { createProposalRepository, SupabaseProposalRepository } from './proposals/proposalRepository';
 export { createDocumentRepository, SupabaseDocumentRepository } from './documents/documentRepository';
+export {
+  createWhatsappRepository,
+  SupabaseWhatsappRepository,
+} from './communications/whatsappRepository';
 export { DataLayerError, toDataLayerError } from './shared/dataErrors';

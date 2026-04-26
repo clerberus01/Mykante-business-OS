@@ -179,3 +179,31 @@ export interface StoredDocument {
   createdAt: number;
   updatedAt: number;
 }
+
+export interface WhatsappConversation {
+  id: string;
+  clientId?: string;
+  contactName: string;
+  phoneE164: string;
+  status: 'open' | 'archived';
+  unreadCount: number;
+  lastMessageBody?: string;
+  lastMessageAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface WhatsappMessage {
+  id: string;
+  conversationId: string;
+  direction: 'inbound' | 'outbound';
+  body: string;
+  status: 'queued' | 'sent' | 'delivered' | 'read' | 'received' | 'failed';
+  providerMessageId?: string;
+  errorMessage?: string;
+  sentBy?: string;
+  createdAt: number;
+  sentAt?: number;
+  deliveredAt?: number;
+  readAt?: number;
+}
