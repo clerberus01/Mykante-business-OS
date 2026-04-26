@@ -497,7 +497,7 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
                      <div>
                         <h4 className="text-xs font-bold text-os-text truncate">{file.displayName}</h4>
                         <p className="text-[9px] font-mono text-gray-400 uppercase mt-1">
-                          {Math.max(1, Math.round(file.sizeBytes / 1024))} KB â€¢ {(file.fileExtension || 'file').toUpperCase()}
+                          {Math.max(1, Math.round(file.sizeBytes / 1024))} KB • {(file.fileExtension || 'file').toUpperCase()}
                         </p>
                      </div>
                      <div className="flex gap-2">

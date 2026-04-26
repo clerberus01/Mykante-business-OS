@@ -43,8 +43,8 @@ Objetivo: substituir a sessao principal do frontend por Supabase Auth e preparar
 
 ## Observacao historica
 
-- durante a migracao inicial houve uma ponte temporaria de sessao legada para manter leituras no Firestore
-- essa ponte foi removida na Parte 12, quando os modulos ativos deixaram de depender do Firebase
+- durante a migracao inicial houve uma ponte temporaria de sessao legada para manter leituras no backend anterior
+- essa ponte foi removida na Parte 12, quando os modulos ativos deixaram de depender do provedor anterior
 
 ## Limitacoes temporarias na epoca
 

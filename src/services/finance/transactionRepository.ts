@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { z } from 'zod';
 import type { Transaction } from '../../types';
 import { SupabaseRepository } from '../shared/supabaseRepository';
 import { toIsoString, toUnixTimestamp } from '../shared/mappers';
@@ -20,6 +21,24 @@ type TransactionRecord = {
   attachment_url: string | null;
   created_at: string;
 };
+
+const transactionRecordSchema = z.object({
+  id: z.string().uuid(),
+  organization_id: z.string().uuid(),
+  type: z.enum(['income', 'expense']),
+  amount: z.coerce.number(),
+  description: z.string(),
+  date: z.string(),
+  due_date: z.string(),
+  status: z.enum(['pending', 'liquidated', 'cancelled']),
+  category_id: z.string(),
+  client_id: z.string().uuid().nullable(),
+  project_id: z.string().uuid().nullable(),
+  is_recurring: z.boolean().nullable(),
+  recurrence_interval: z.enum(['monthly', 'weekly', 'yearly']).nullable(),
+  attachment_url: z.string().nullable(),
+  created_at: z.string(),
+});
 
 function mapTransactionRecord(record: TransactionRecord): Transaction {
   return {
@@ -56,7 +75,7 @@ export class SupabaseTransactionRepository extends SupabaseRepository {
       'Nao foi possivel carregar os lancamentos financeiros.',
     );
 
-    return (rows as TransactionRecord[]).map(mapTransactionRecord);
+    return transactionRecordSchema.array().parse(rows).map(mapTransactionRecord);
   }
 
   async createTransaction(transaction: Omit<Transaction, 'id' | 'createdAt'>) {

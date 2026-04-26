@@ -1,66 +1,78 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Transaction } from '../../types';
 import { createTransactionRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
 
 export function useSupabaseTransactions() {
   const { supabase, organizationId } = useRepositoryContext();
+  const queryClient = useQueryClient();
   const repository = useMemo(
     () => (organizationId ? createTransactionRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(Boolean(organizationId));
+
+  const transactionsQueryKey = ['crm', organizationId, 'transactions'] as const;
+  const transactionsQuery = useQuery({
+    queryKey: transactionsQueryKey,
+    enabled: Boolean(repository),
+    queryFn: async () => {
+      if (!repository) return [];
+      return repository.listTransactions();
+    },
+  });
 
   const loadTransactions = useCallback(async () => {
     if (!repository) {
-      setTransactions([]);
-      setLoading(false);
-      return;
+      return [];
     }
 
-    setLoading(true);
-
     try {
-      setTransactions(await repository.listTransactions());
+      return await queryClient.fetchQuery({
+        queryKey: transactionsQueryKey,
+        queryFn: () => repository.listTransactions(),
+      });
     } catch (error) {
       console.warn(
         'Supabase transactions load failed:',
         toDataLayerError(error, 'Falha ao carregar lancamentos financeiros.'),
       );
-      setTransactions([]);
-    } finally {
-      setLoading(false);
+      return [];
     }
-  }, [repository]);
+  }, [queryClient, repository, transactionsQueryKey]);
 
-  useEffect(() => {
-    void loadTransactions();
-  }, [loadTransactions]);
-
-  const addTransaction = useCallback(
-    async (transaction: Omit<Transaction, 'id' | 'createdAt'>) => {
+  const addTransactionMutation = useMutation({
+    mutationFn: async (transaction: Omit<Transaction, 'id' | 'createdAt'>) => {
       if (!repository) return;
       await repository.createTransaction(transaction);
-      await loadTransactions();
     },
-    [loadTransactions, repository],
-  );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: transactionsQueryKey });
+    },
+  });
 
-  const updateTransaction = useCallback(
-    async (id: string, data: Partial<Transaction>) => {
+  const updateTransactionMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Transaction> }) => {
       if (!repository) return;
       await repository.updateTransaction(id, data);
-      await loadTransactions();
     },
-    [loadTransactions, repository],
-  );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: transactionsQueryKey });
+    },
+  });
+
+  if (transactionsQuery.error) {
+    console.warn(
+      'Supabase transactions load failed:',
+      toDataLayerError(transactionsQuery.error, 'Falha ao carregar lancamentos financeiros.'),
+    );
+  }
 
   return {
-    transactions,
-    loading,
-    addTransaction,
-    updateTransaction,
+    transactions: transactionsQuery.error ? [] : transactionsQuery.data ?? [],
+    loading: transactionsQuery.isLoading,
+    addTransaction: addTransactionMutation.mutateAsync,
+    updateTransaction: (id: string, data: Partial<Transaction>) => updateTransactionMutation.mutateAsync({ id, data }),
     refreshTransactions: loadTransactions,
   };
 }

@@ -1,120 +1,219 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Client, TimelineEvent } from '../../types';
+import { useCallback, useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { Client, CrmDeal, CrmPipelineStage, TimelineEvent } from '../../types';
 import { createClientRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
 
 export function useSupabaseClients() {
   const { supabase, organizationId } = useRepositoryContext();
+  const queryClient = useQueryClient();
   const repository = useMemo(
     () => (organizationId ? createClientRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(Boolean(organizationId));
+
+  const clientsQueryKey = ['crm', organizationId, 'clients'] as const;
+  const clientsQuery = useQuery({
+    queryKey: clientsQueryKey,
+    enabled: Boolean(repository),
+    queryFn: async () => {
+      if (!repository) return [];
+      return repository.listClients();
+    },
+  });
 
   const loadClients = useCallback(async () => {
     if (!repository) {
-      setClients([]);
-      setLoading(false);
-      return;
+      return [];
     }
-
-    setLoading(true);
 
     try {
-      setClients(await repository.listClients());
+      return await queryClient.fetchQuery({
+        queryKey: clientsQueryKey,
+        queryFn: () => repository.listClients(),
+      });
     } catch (error) {
       console.warn('Supabase clients load failed:', toDataLayerError(error, 'Falha ao carregar clientes.'));
-      setClients([]);
-    } finally {
-      setLoading(false);
+      return [];
     }
-  }, [repository]);
+  }, [clientsQueryKey, queryClient, repository]);
 
-  useEffect(() => {
-    void loadClients();
-  }, [loadClients]);
-
-  const addClient = useCallback(
-    async (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const addClientMutation = useMutation({
+    mutationFn: async (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) => {
       if (!repository) return;
       await repository.createClient(client);
-      await loadClients();
     },
-    [loadClients, repository],
-  );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['crm', organizationId] });
+    },
+  });
 
-  const deleteClient = useCallback(
-    async (id: string) => {
+  const deleteClientMutation = useMutation({
+    mutationFn: async (id: string) => {
       if (!repository) return;
       if (!window.confirm('Deseja realmente excluir este cliente?')) return;
       await repository.softDeleteClient(id);
-      await loadClients();
     },
-    [loadClients, repository],
-  );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['crm', organizationId] });
+    },
+  });
 
-  const updateClient = useCallback(
-    async (id: string, data: Partial<Client>) => {
+  const updateClientMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Client> }) => {
       if (!repository) return;
       await repository.updateClient(id, data);
-      await loadClients();
     },
-    [loadClients, repository],
-  );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['crm', organizationId] });
+    },
+  });
 
-  return { clients, loading, addClient, deleteClient, updateClient, refreshClients: loadClients };
+  const clients = clientsQuery.error
+    ? []
+    : clientsQuery.data ?? [];
+
+  if (clientsQuery.error) {
+    console.warn('Supabase clients load failed:', toDataLayerError(clientsQuery.error, 'Falha ao carregar clientes.'));
+  }
+
+  return {
+    clients,
+    loading: clientsQuery.isLoading,
+    addClient: addClientMutation.mutateAsync,
+    deleteClient: deleteClientMutation.mutateAsync,
+    updateClient: (id: string, data: Partial<Client>) => updateClientMutation.mutateAsync({ id, data }),
+    refreshClients: loadClients,
+  };
 }
 
 export function useSupabaseEvents(clientId: string | null) {
   const { supabase, organizationId, currentUserName } = useRepositoryContext();
+  const queryClient = useQueryClient();
   const repository = useMemo(
     () => (organizationId ? createClientRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const [events, setEvents] = useState<TimelineEvent[]>([]);
-  const [loading, setLoading] = useState(Boolean(clientId && organizationId));
+  const eventsQueryKey = ['crm', organizationId, 'clients', clientId, 'events'] as const;
+
+  const eventsQuery = useQuery({
+    queryKey: eventsQueryKey,
+    enabled: Boolean(repository && clientId),
+    queryFn: async () => {
+      if (!repository || !clientId) return [];
+      return repository.listEvents(clientId);
+    },
+  });
 
   const loadEvents = useCallback(async () => {
     if (!repository || !clientId) {
-      setEvents([]);
-      setLoading(false);
-      return;
+      return [];
     }
-
-    setLoading(true);
 
     try {
-      setEvents(await repository.listEvents(clientId));
+      return await queryClient.fetchQuery({
+        queryKey: eventsQueryKey,
+        queryFn: () => repository.listEvents(clientId),
+      });
     } catch (error) {
       console.warn('Supabase client events load failed:', toDataLayerError(error, 'Falha ao carregar eventos.'));
-      setEvents([]);
-    } finally {
-      setLoading(false);
+      return [];
     }
-  }, [clientId, repository]);
+  }, [clientId, eventsQueryKey, queryClient, repository]);
 
-  useEffect(() => {
-    void loadEvents();
-  }, [loadEvents]);
-
-  const addEvent = useCallback(
-    async (event: Omit<TimelineEvent, 'id' | 'createdAt' | 'createdBy'>) => {
+  const addEventMutation = useMutation({
+    mutationFn: async (event: Omit<TimelineEvent, 'id' | 'createdAt' | 'createdBy'>) => {
       if (!repository || !clientId) return;
       await repository.createEvent(clientId, event, currentUserName);
-      await loadEvents();
     },
-    [clientId, currentUserName, loadEvents, repository],
-  );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: eventsQueryKey });
+    },
+  });
 
-  const deleteEvent = useCallback(
-    async (eventId: string) => {
+  const deleteEventMutation = useMutation({
+    mutationFn: async (eventId: string) => {
       if (!repository || !clientId) return;
       await repository.deleteEvent(clientId, eventId);
-      await loadEvents();
     },
-    [clientId, loadEvents, repository],
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: eventsQueryKey });
+    },
+  });
+
+  if (eventsQuery.error) {
+    console.warn('Supabase client events load failed:', toDataLayerError(eventsQuery.error, 'Falha ao carregar eventos.'));
+  }
+
+  return {
+    events: eventsQuery.error ? [] : eventsQuery.data ?? [],
+    loading: eventsQuery.isLoading,
+    addEvent: addEventMutation.mutateAsync,
+    deleteEvent: deleteEventMutation.mutateAsync,
+    refreshEvents: loadEvents,
+  };
+}
+
+export function useSupabasePipeline() {
+  const { supabase, organizationId, currentUserName } = useRepositoryContext();
+  const queryClient = useQueryClient();
+  const repository = useMemo(
+    () => (organizationId ? createClientRepository(supabase, organizationId) : null),
+    [organizationId, supabase],
   );
 
-  return { events, loading, addEvent, deleteEvent, refreshEvents: loadEvents };
+  const stagesQuery = useQuery({
+    queryKey: ['crm', organizationId, 'pipeline-stages'],
+    enabled: Boolean(repository),
+    queryFn: async () => {
+      if (!repository) return [];
+      return repository.listPipelineStages();
+    },
+  });
+
+  const dealsQuery = useQuery({
+    queryKey: ['crm', organizationId, 'deals'],
+    enabled: Boolean(repository),
+    queryFn: async () => {
+      if (!repository) return [];
+      return repository.listDeals();
+    },
+  });
+
+  const moveDealMutation = useMutation({
+    mutationFn: async ({
+      deal,
+      nextStage,
+      previousStageName,
+    }: {
+      deal: CrmDeal;
+      nextStage: CrmPipelineStage;
+      previousStageName: string;
+    }) => {
+      if (!repository) return;
+      await repository.moveDeal(deal, nextStage, previousStageName, currentUserName);
+    },
+    onSuccess: async (_data, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['crm', organizationId, 'deals'] }),
+        queryClient.invalidateQueries({ queryKey: ['crm', organizationId, 'clients', variables.deal.clientId, 'events'] }),
+      ]);
+    },
+  });
+
+  if (stagesQuery.error) {
+    console.warn('Supabase pipeline stages load failed:', toDataLayerError(stagesQuery.error, 'Falha ao carregar estagios.'));
+  }
+
+  if (dealsQuery.error) {
+    console.warn('Supabase deals load failed:', toDataLayerError(dealsQuery.error, 'Falha ao carregar oportunidades.'));
+  }
+
+  return {
+    stages: stagesQuery.error ? [] : stagesQuery.data ?? [],
+    deals: dealsQuery.error ? [] : dealsQuery.data ?? [],
+    loading: stagesQuery.isLoading || dealsQuery.isLoading,
+    moveDeal: moveDealMutation.mutateAsync,
+    movingDealId: moveDealMutation.variables?.deal.id ?? null,
+  };
 }

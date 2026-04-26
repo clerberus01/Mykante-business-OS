@@ -44,6 +44,8 @@ const NavItem: React.FC<NavItemProps> = ({ icon: Icon, label, id, active, onClic
 );
 
 const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string; setActiveTab: (tab: string) => void }) => {
+  const { user } = useAuth();
+  const fallbackInitial = (user?.displayName || user?.email || 'M').charAt(0).toUpperCase();
   const navItems = [
     { id: 'dashboard', label: 'Painel', icon: LayoutDashboard },
     { id: 'crm', label: 'CRM & Timeline', icon: Users },
@@ -56,8 +58,12 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string; setActiveTab:
 
   return (
     <aside className="w-16 flex flex-col items-center py-4 bg-os-dark border-r border-os-dark shadow-xl fixed h-screen left-0 top-0 z-50">
-      <div className="w-10 h-10 bg-brand rounded flex items-center justify-center mb-8 font-bold text-white text-xl shadow-lg shadow-brand/20">
-        M
+      <div className="w-10 h-10 bg-brand rounded flex items-center justify-center mb-8 font-bold text-white text-xl shadow-lg shadow-brand/20 overflow-hidden">
+        {user?.avatarUrl ? (
+          <img src={user.avatarUrl} alt="Foto de perfil" className="w-full h-full object-cover" />
+        ) : (
+          fallbackInitial
+        )}
       </div>
       <nav className="flex flex-col gap-6">
         {navItems.map((item) => (

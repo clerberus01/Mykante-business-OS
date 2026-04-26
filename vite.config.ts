@@ -14,7 +14,7 @@ export default defineConfig(({mode}) => {
     },
     server: {
       // HMR can be disabled through the DISABLE_HMR environment variable.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
+      // Do not modify: file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
     },
   };

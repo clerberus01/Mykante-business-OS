@@ -62,6 +62,28 @@ export interface TimelineEvent {
   createdBy: string;
 }
 
+export interface CrmPipelineStage {
+  id: string;
+  key: string;
+  name: string;
+  position: number;
+  color: string;
+  isDefault: boolean;
+}
+
+export interface CrmDeal {
+  id: string;
+  clientId: string;
+  stageId: string;
+  title: string;
+  value: number;
+  probability: number;
+  status: 'open' | 'won' | 'lost';
+  expectedCloseAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export type ProjectStatus = 'draft' | 'ongoing' | 'paused' | 'completed' | 'cancelled';
 export type PaymentStatus = 'paid' | 'pending' | 'overdue';
 

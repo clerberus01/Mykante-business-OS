@@ -1,4 +1,4 @@
-export { useSupabaseClients, useSupabaseEvents } from './useClients';
+export { useSupabaseClients, useSupabaseEvents, useSupabasePipeline } from './useClients';
 export {
   useSupabaseProjects,
   useSupabaseMilestones,

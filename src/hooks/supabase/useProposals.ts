@@ -1,57 +1,75 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Proposal } from '../../types';
 import { createProposalRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
 
 export function useSupabaseProposals() {
   const { supabase, organizationId } = useRepositoryContext();
+  const queryClient = useQueryClient();
   const repository = useMemo(
     () => (organizationId ? createProposalRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [loading, setLoading] = useState(Boolean(organizationId));
+
+  const proposalsQueryKey = ['crm', organizationId, 'proposals'] as const;
+  const proposalsQuery = useQuery({
+    queryKey: proposalsQueryKey,
+    enabled: Boolean(repository),
+    queryFn: async () => {
+      if (!repository) return [];
+      return repository.listProposals();
+    },
+  });
 
   const loadProposals = useCallback(async () => {
     if (!repository) {
-      setProposals([]);
-      setLoading(false);
-      return;
+      return [];
     }
-
-    setLoading(true);
 
     try {
-      setProposals(await repository.listProposals());
+      return await queryClient.fetchQuery({
+        queryKey: proposalsQueryKey,
+        queryFn: () => repository.listProposals(),
+      });
     } catch (error) {
       console.warn('Supabase proposals load failed:', toDataLayerError(error, 'Falha ao carregar propostas.'));
-      setProposals([]);
-    } finally {
-      setLoading(false);
+      return [];
     }
-  }, [repository]);
+  }, [proposalsQueryKey, queryClient, repository]);
 
-  useEffect(() => {
-    void loadProposals();
-  }, [loadProposals]);
-
-  const addProposal = useCallback(
-    async (proposal: Omit<Proposal, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const addProposalMutation = useMutation({
+    mutationFn: async (proposal: Omit<Proposal, 'id' | 'createdAt' | 'updatedAt'>) => {
       if (!repository) return;
       await repository.createProposal(proposal);
-      await loadProposals();
     },
-    [loadProposals, repository],
-  );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['crm', organizationId] });
+    },
+  });
 
-  const updateProposal = useCallback(
-    async (id: string, data: Partial<Proposal>) => {
+  const updateProposalMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Proposal> }) => {
       if (!repository) return;
       await repository.updateProposal(id, data);
-      await loadProposals();
     },
-    [loadProposals, repository],
-  );
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: proposalsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ['crm', organizationId, 'transactions'] }),
+      ]);
+    },
+  });
 
-  return { proposals, loading, addProposal, updateProposal, refreshProposals: loadProposals };
+  if (proposalsQuery.error) {
+    console.warn('Supabase proposals load failed:', toDataLayerError(proposalsQuery.error, 'Falha ao carregar propostas.'));
+  }
+
+  return {
+    proposals: proposalsQuery.error ? [] : proposalsQuery.data ?? [],
+    loading: proposalsQuery.isLoading,
+    addProposal: addProposalMutation.mutateAsync,
+    updateProposal: (id: string, data: Partial<Proposal>) => updateProposalMutation.mutateAsync({ id, data }),
+    refreshProposals: loadProposals,
+  };
 }

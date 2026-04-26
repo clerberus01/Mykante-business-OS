@@ -14,7 +14,7 @@ Objetivo: preparar o projeto para a migracao para Supabase sem alterar o design 
 
 ### Autenticacao
 
-- origem na epoca da preparacao: Firebase Auth
+- origem na epoca da preparacao: provedor legado de autenticacao
 - arquivos principais:
   - `src/contexts/AuthContext.tsx`
   - `src/pages/Login.tsx`
@@ -28,7 +28,7 @@ Objetivo: preparar o projeto para a migracao para Supabase sem alterar o design 
   - `src/pages/CRM.tsx`
   - `src/components/ClientModal.tsx`
   - `src/components/Timeline.tsx`
-  - `src/hooks/useFirebase.ts`
+  - `src/hooks/supabase/useClients.ts`
 
 ### Projetos
 
@@ -52,7 +52,7 @@ Objetivo: preparar o projeto para a migracao para Supabase sem alterar o design 
 - arquivos principais:
   - `src/pages/Finance.tsx`
   - `src/components/TransactionModal.tsx`
-  - `src/hooks/useFirebase.ts`
+  - `src/hooks/supabase/useFinance.ts`
 
 ### Propostas
 
@@ -60,7 +60,7 @@ Objetivo: preparar o projeto para a migracao para Supabase sem alterar o design 
   - proposals
 - arquivos principais:
   - `src/pages/CRM.tsx`
-  - `src/hooks/useFirebase.ts`
+  - `src/hooks/supabase/useProposals.ts`
 
 ### Documentos
 
@@ -90,10 +90,10 @@ Objetivo: preparar o projeto para a migracao para Supabase sem alterar o design 
 ## Riscos mapeados
 
 - regras de permissao e negocio no frontend
-- autenticacao originalmente acoplada ao Firebase
+- autenticacao originalmente acoplada ao provedor legado
 - dados sensiveis sem estrutura LGPD no banco
 - partes do produto ainda mockadas
-- arquivos legados do Firebase ainda presentes no repositorio no momento da preparacao
+- arquivos legados ainda presentes no repositorio no momento da preparacao
 
 ## Proxima etapa
 

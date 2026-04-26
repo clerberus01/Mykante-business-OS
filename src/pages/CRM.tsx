@@ -25,6 +25,7 @@ import { cn, formatDate, formatCurrency } from '../lib/utils';
 import {
   useSupabaseClients as useClients,
   useSupabaseEvents as useEvents,
+  useSupabasePipeline as usePipeline,
   useSupabaseTransactions as useTransactions,
   useSupabaseProposals as useProposals,
 } from '../hooks/supabase';
@@ -35,11 +36,12 @@ export default function CRM() {
   const { clients, loading: loadingClients, addClient, deleteClient, updateClient } = useClients();
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const { events, loading: loadingEvents, addEvent, deleteEvent } = useEvents(selectedClientId);
+  const { stages, deals, loading: loadingPipeline, moveDeal, movingDealId } = usePipeline();
   const { transactions } = useTransactions();
   const { proposals, updateProposal } = useProposals();
   const { isAdmin } = useAuth();
   
-  const [activeTab, setActiveTab ] = useState<'timeline' | 'proposals'>('timeline');
+  const [activeTab, setActiveTab ] = useState<'timeline' | 'pipeline' | 'proposals'>('timeline');
   const [activeAction, setActiveAction] = useState<TimelineEventType | null>(null);
   const [actionContent, setActionContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -59,6 +61,7 @@ export default function CRM() {
   const clientTransactions = transactions.filter(t => t.clientId === selectedClientId);
   const clientBalance = clientTransactions.reduce((acc, t) => t.type === 'income' ? acc + t.amount : acc - t.amount, 0);
   const clientProposals = proposals.filter(p => p.clientId === selectedClientId);
+  const clientsById = React.useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
   
   // Set initial selected client if none selected
   React.useEffect(() => {
@@ -141,6 +144,29 @@ export default function CRM() {
     } catch (error) {
       console.error('CRM event deletion failed:', error);
       window.alert('Nao foi possivel excluir o evento.');
+    }
+  };
+
+  const handleMoveDeal = async (dealId: string, direction: -1 | 1) => {
+    const deal = deals.find((item) => item.id === dealId);
+
+    if (!deal) return;
+
+    const currentStageIndex = stages.findIndex((stage) => stage.id === deal.stageId);
+    const nextStage = stages[currentStageIndex + direction];
+    const currentStage = stages[currentStageIndex];
+
+    if (!nextStage || !currentStage) return;
+
+    try {
+      await moveDeal({
+        deal,
+        nextStage,
+        previousStageName: currentStage.name,
+      });
+    } catch (error) {
+      console.error('CRM pipeline update failed:', error);
+      window.alert('Nao foi possivel mover a oportunidade.');
     }
   };
 
@@ -328,6 +354,14 @@ export default function CRM() {
                  >Timeline</button>
                  <button 
                   type="button"
+                  onClick={() => setActiveTab('pipeline')}
+                  className={cn(
+                    "px-4 py-3 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all",
+                    activeTab === 'pipeline' ? "border-brand text-brand" : "border-transparent text-gray-400 hover:text-os-text"
+                  )}
+                 >Pipeline ({deals.length})</button>
+                 <button 
+                  type="button"
                   onClick={() => setActiveTab('proposals')}
                   className={cn(
                     "px-4 py-3 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all",
@@ -441,6 +475,83 @@ export default function CRM() {
                             <span className="text-[10px] font-mono text-gray-300">{events.length} EVENTOS_REGISTRADOS</span>
                         </div>
                         <Timeline events={events} onDelete={handleDeleteEvent} />
+                      </div>
+                    )
+                  ) : activeTab === 'pipeline' ? (
+                    loadingPipeline ? (
+                      <div className="flex flex-col items-center justify-center p-20 grayscale opacity-20">
+                        <Loader2 className="w-8 h-8 animate-spin mb-4" />
+                        <span className="text-[10px] font-mono font-bold tracking-[0.3em] uppercase">Carregando Pipeline...</span>
+                      </div>
+                    ) : (
+                      <div className="min-w-[900px]">
+                        <div className="mb-8 border-b border-gray-100 pb-4 flex items-center justify-between">
+                          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">Pipeline Comercial</h3>
+                          <span className="text-[10px] font-mono text-gray-300">{deals.length} OPORTUNIDADES_ABERTAS</span>
+                        </div>
+                        <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.max(stages.length, 1)}, minmax(180px, 1fr))` }}>
+                          {stages.map((stage, stageIndex) => {
+                            const stageDeals = deals.filter((deal) => deal.stageId === stage.id);
+
+                            return (
+                              <div key={stage.id} className="bg-white border border-gray-100 rounded shadow-sm min-h-[360px] flex flex-col">
+                                <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+                                  <span className="text-[10px] font-black uppercase tracking-widest text-os-text">{stage.name}</span>
+                                  <span className="text-[10px] font-mono text-gray-300">{stageDeals.length}</span>
+                                </div>
+                                <div className="flex-1 p-2 space-y-2">
+                                  {stageDeals.map((deal) => {
+                                    const dealClient = clientsById.get(deal.clientId);
+                                    const isMoving = movingDealId === deal.id;
+
+                                    return (
+                                      <div key={deal.id} className="border border-gray-100 rounded bg-gray-50/60 p-3 shadow-sm">
+                                        <div className="flex items-start justify-between gap-2 mb-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setSelectedClientId(deal.clientId);
+                                              setActiveTab('timeline');
+                                            }}
+                                            className="text-left min-w-0"
+                                          >
+                                            <p className="text-[11px] font-black text-os-text leading-tight truncate">{deal.title}</p>
+                                            <p className="text-[10px] font-mono text-gray-400 truncate">{dealClient?.name || 'Cliente vinculado'}</p>
+                                          </button>
+                                          <span className="text-[9px] font-mono text-gray-400">{deal.probability}%</span>
+                                        </div>
+                                        <p className="text-[11px] font-mono font-bold text-brand mb-3">{formatCurrency(deal.value)}</p>
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            disabled={stageIndex === 0 || isMoving}
+                                            onClick={() => handleMoveDeal(deal.id, -1)}
+                                            className="flex-1 py-1 rounded bg-white border border-gray-100 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-os-text disabled:opacity-30"
+                                          >
+                                            Voltar
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={stageIndex === stages.length - 1 || isMoving}
+                                            onClick={() => handleMoveDeal(deal.id, 1)}
+                                            className="flex-1 py-1 rounded bg-os-dark text-white text-[9px] font-black uppercase tracking-widest disabled:opacity-30"
+                                          >
+                                            Avancar
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                  {stageDeals.length === 0 && (
+                                    <div className="py-12 text-center text-[10px] font-bold uppercase tracking-widest text-gray-200">
+                                      Sem oportunidades
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )
                   ) : (

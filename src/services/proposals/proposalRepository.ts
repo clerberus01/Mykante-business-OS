@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { z } from 'zod';
 import type { Proposal } from '../../types';
 import { SupabaseRepository } from '../shared/supabaseRepository';
 import { toIsoString, toUnixTimestamp } from '../shared/mappers';
@@ -10,11 +11,24 @@ type ProposalRecord = {
   title: string;
   value: number;
   status: Proposal['status'];
-  description: string | null;
+  description?: string | null;
   valid_until: string;
   created_at: string;
   updated_at: string;
 };
+
+const proposalRecordSchema = z.object({
+  id: z.string().uuid(),
+  organization_id: z.string().uuid(),
+  client_id: z.string().uuid(),
+  title: z.string(),
+  value: z.coerce.number(),
+  status: z.enum(['draft', 'sent', 'accepted', 'rejected']),
+  description: z.string().nullable(),
+  valid_until: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
 
 function mapProposalRecord(record: ProposalRecord): Proposal {
   return {
@@ -46,7 +60,7 @@ export class SupabaseProposalRepository extends SupabaseRepository {
       'Nao foi possivel carregar as propostas.',
     );
 
-    return (rows as ProposalRecord[]).map(mapProposalRecord);
+    return proposalRecordSchema.array().parse(rows).map(mapProposalRecord);
   }
 
   async createProposal(proposal: Omit<Proposal, 'id' | 'createdAt' | 'updatedAt'>) {
@@ -82,7 +96,7 @@ export class SupabaseProposalRepository extends SupabaseRepository {
         'Nao foi possivel localizar a proposta.',
       );
 
-      currentProposal = (proposalRows as ProposalRecord[])[0] ?? null;
+      currentProposal = proposalRecordSchema.array().parse(proposalRows)[0] ?? null;
     }
 
     const payload: Record<string, unknown> = {};

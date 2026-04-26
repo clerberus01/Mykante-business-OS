@@ -215,7 +215,7 @@ export default function Documents() {
           <div className="p-4 rounded border border-gray-100 bg-white/50 space-y-3">
             <h4 className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Quick Share</h4>
             <p className="text-[10px] text-gray-500 leading-relaxed">
-              Os arquivos ficam em bucket privado com acesso restrito por organizaÃ§Ã£o.
+              Os arquivos ficam em bucket privado com acesso restrito por organização.
             </p>
             <div className="border-2 border-dashed border-gray-200 rounded p-4 flex items-center justify-center">
               <Share2 className="w-6 h-6 text-gray-200" />
@@ -229,7 +229,7 @@ export default function Documents() {
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="Pesquisar por nome, extensÃ£o ou tag..."
+                placeholder="Pesquisar por nome, extensão ou tag..."
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 className="w-full pl-9 pr-4 py-1.5 bg-white border border-gray-100 rounded text-xs focus:ring-1 focus:ring-brand outline-none transition-all"
@@ -338,7 +338,7 @@ export default function Documents() {
 
           <div className="p-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between text-[10px] font-mono text-gray-400">
             <div className="flex gap-4">
-              <span>PÃGINA: 01 / 01</span>
+              <span>PÁGINA: 01 / 01</span>
               <span>REGISTROS: {filteredDocuments.length}</span>
             </div>
             <div className="flex gap-1">
@@ -346,7 +346,7 @@ export default function Documents() {
                 ANT
               </button>
               <button type="button" className="px-2 py-1 bg-white border border-gray-200 rounded" disabled>
-                PRÃ“X
+                PRÓX
               </button>
             </div>
           </div>

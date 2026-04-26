@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   User,
   Bell,
@@ -17,13 +17,17 @@ import {
   Download,
   FileSearch,
   Eraser,
+  RefreshCw,
+  Upload,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { cn } from '../lib/utils';
 import { useSupabaseNotifications, useSupabasePrivacy } from '../hooks/supabase';
+import { getSupabaseBrowserClient } from '../lib/supabase';
 
 type TestChannel = 'email' | 'push' | null;
 type PrivacyAction = 'export' | 'deletion' | 'anonymization' | null;
+type SettingsSection = 'profile' | 'notifications' | 'security' | 'database' | 'api';
 
 async function sendTestNotification(accessToken: string, channel: 'email' | 'push') {
   const endpoint = channel === 'email' ? '/api/notifications/email' : '/api/notifications/push';
@@ -48,7 +52,7 @@ async function sendTestNotification(accessToken: string, channel: 'email' | 'pus
   };
 
   if (!response.ok) {
-    throw new Error(payload.error || 'Falha ao enviar notificacao de teste.');
+    throw new Error(payload.error || 'Falha ao enviar notificação de teste.');
   }
 
   return payload;
@@ -84,20 +88,221 @@ function Toggle({
 }
 
 export default function Settings() {
-  const { user, signOut, session } = useAuth();
+  const { user, signOut, session, organization, role, isAdmin, refreshAuth } = useAuth();
   const { preferences, pushStatus, summary, loading, setChannelEnabled } = useSupabaseNotifications();
-  const { requests, retentionPolicies, organizationPrivacy, createDataRequest } = useSupabasePrivacy();
+  const { requests, retentionPolicies, organizationPrivacy, createDataRequest, refreshPrivacy } = useSupabasePrivacy();
+  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+
+  const [activeSection, setActiveSection] = useState<SettingsSection>('profile');
   const [savingChannel, setSavingChannel] = useState<'email' | 'push' | 'whatsapp' | null>(null);
   const [testingChannel, setTestingChannel] = useState<TestChannel>(null);
   const [privacyAction, setPrivacyAction] = useState<PrivacyAction>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [organizationName, setOrganizationName] = useState('');
+  const [lgpdContactEmail, setLgpdContactEmail] = useState('');
+  const [mfaFactorCount, setMfaFactorCount] = useState<number | null>(null);
+  const [securityLoading, setSecurityLoading] = useState(false);
+  const [apiHealth, setApiHealth] = useState<'idle' | 'checking' | 'ok' | 'error'>('idle');
+  const [apiHealthMessage, setApiHealthMessage] = useState('');
 
-  const sections = [
+  const sections: { id: SettingsSection; label: string; icon: typeof User }[] = [
     { id: 'profile', label: 'Meu Perfil', icon: User },
-    { id: 'notifications', label: 'NotificaÃ§Ãµes', icon: Bell },
-    { id: 'security', label: 'SeguranÃ§a', icon: Shield },
+    { id: 'notifications', label: 'Notificações', icon: Bell },
+    { id: 'security', label: 'Segurança', icon: Shield },
     { id: 'database', label: 'Banco de Dados', icon: Database },
-    { id: 'api', label: 'API Integrations', icon: Code },
+    { id: 'api', label: 'Integrações API', icon: Code },
   ];
+
+  useEffect(() => {
+    setFullName(user?.displayName || '');
+    setAvatarUrl(user?.avatarUrl || '');
+  }, [user?.avatarUrl, user?.displayName]);
+
+  useEffect(() => {
+    setOrganizationName(organizationPrivacy?.name || organization?.name || '');
+    setLgpdContactEmail(organizationPrivacy?.lgpdContactEmail || '');
+  }, [organization?.name, organizationPrivacy?.lgpdContactEmail, organizationPrivacy?.name]);
+
+  const loadMfaStatus = async () => {
+    setSecurityLoading(true);
+
+    try {
+      const { data, error } = await supabase.auth.mfa.listFactors();
+
+      if (error) {
+        throw error;
+      }
+
+      setMfaFactorCount(data.all?.filter((factor) => factor.status === 'verified').length ?? 0);
+    } catch (error) {
+      console.warn('MFA status load failed:', error);
+      setMfaFactorCount(null);
+    } finally {
+      setSecurityLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection === 'security') {
+      void loadMfaStatus();
+    }
+  }, [activeSection]);
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+
+    setSavingProfile(true);
+
+    try {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          full_name: fullName.trim() || null,
+          avatar_url: avatarUrl.trim() || null,
+        })
+        .eq('id', user.id);
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      if (organization?.id && isAdmin) {
+        const { error: organizationError } = await supabase
+          .from('organizations')
+          .update({
+            name: organizationName.trim() || organization.name || 'Mykante Workspace',
+            lgpd_contact_email: lgpdContactEmail.trim() || null,
+          })
+          .eq('id', organization.id);
+
+        if (organizationError) {
+          throw organizationError;
+        }
+
+        await refreshPrivacy();
+      }
+
+      await refreshAuth();
+      window.alert('Configurações salvas.');
+    } catch (error) {
+      console.error('Settings save failed:', error);
+      window.alert('Não foi possível salvar as configurações.');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleDiscardProfile = () => {
+    setFullName(user?.displayName || '');
+    setAvatarUrl(user?.avatarUrl || '');
+    setOrganizationName(organizationPrivacy?.name || organization?.name || '');
+    setLgpdContactEmail(organizationPrivacy?.lgpdContactEmail || '');
+  };
+
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file || !user) return;
+
+    if (!file.type.startsWith('image/')) {
+      window.alert('Selecione uma imagem válida.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      window.alert('A imagem deve ter até 5 MB.');
+      return;
+    }
+
+    setUploadingAvatar(true);
+
+    try {
+      const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const storagePath = `${user.id}/avatar-${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from('profile-avatars')
+        .upload(storagePath, file, {
+          cacheControl: '3600',
+          contentType: file.type,
+          upsert: true,
+        });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data } = supabase.storage.from('profile-avatars').getPublicUrl(storagePath);
+      const publicUrl = data.publicUrl;
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', user.id);
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      setAvatarUrl(publicUrl);
+      await refreshAuth();
+      window.alert('Foto de perfil atualizada.');
+    } catch (error) {
+      console.error('Avatar upload failed:', error);
+      window.alert('Não foi possível enviar a foto de perfil.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    if (!user?.email) {
+      window.alert('Usuário sem e-mail válido.');
+      return;
+    }
+
+    setSecurityLoading(true);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+        redirectTo: window.location.origin,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      window.alert('E-mail de redefinição enviado.');
+    } catch (error) {
+      console.error('Password reset request failed:', error);
+      window.alert('Não foi possível enviar o e-mail de redefinição.');
+    } finally {
+      setSecurityLoading(false);
+    }
+  };
+
+  const handleApiHealthCheck = async () => {
+    setApiHealth('checking');
+    setApiHealthMessage('');
+
+    try {
+      const { error, count } = await supabase
+        .from('organizations')
+        .select('id', { count: 'exact', head: true });
+
+      if (error) {
+        throw error;
+      }
+
+      setApiHealth('ok');
+      setApiHealthMessage(`Supabase operacional. Organizações visíveis: ${count ?? 0}.`);
+    } catch (error) {
+      setApiHealth('error');
+      setApiHealthMessage(error instanceof Error ? error.message : 'Falha ao consultar o Supabase.');
+    }
+  };
 
   const handleToggleChannel = async (channel: 'email' | 'push' | 'whatsapp') => {
     setSavingChannel(channel);
@@ -108,8 +313,8 @@ export default function Settings() {
       console.error('Notification channel update failed:', error);
       window.alert(
         channel === 'push'
-          ? 'Nao foi possivel atualizar as permissoes de push.'
-          : 'Nao foi possivel atualizar a preferencia de notificacao.',
+          ? 'Não foi possível atualizar as permissões de push.'
+          : 'Não foi possível atualizar a preferência de notificação.',
       );
     } finally {
       setSavingChannel(null);
@@ -118,7 +323,7 @@ export default function Settings() {
 
   const handleSendTest = async (channel: 'email' | 'push') => {
     if (!session?.access_token) {
-      window.alert('Sessao invalida para envio de teste.');
+      window.alert('Sessão inválida para envio de teste.');
       return;
     }
 
@@ -144,7 +349,7 @@ export default function Settings() {
 
   const handlePrivacyExport = async () => {
     if (!session?.access_token) {
-      window.alert('Sessao invalida para exportacao.');
+      window.alert('Sessão inválida para exportação.');
       return;
     }
 
@@ -176,7 +381,7 @@ export default function Settings() {
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Privacy export failed:', error);
-      window.alert('Nao foi possivel exportar os dados pessoais.');
+      window.alert('Não foi possível exportar os dados pessoais.');
     } finally {
       setPrivacyAction(null);
     }
@@ -189,13 +394,13 @@ export default function Settings() {
       await createDataRequest(
         requestType,
         requestType === 'deletion'
-          ? 'Solicitacao de eliminacao dos dados pessoais tratados com base em consentimento.'
-          : 'Solicitacao de anonimização de dados pessoais desnecessarios ou excessivos.',
+          ? 'Solicitação de eliminação dos dados pessoais tratados com base em consentimento.'
+          : 'Solicitação de anonimização de dados pessoais desnecessários ou excessivos.',
       );
-      window.alert('Solicitacao registrada no Centro de Privacidade.');
+      window.alert('Solicitação registrada no Centro de Privacidade.');
     } catch (error) {
       console.error('Privacy request failed:', error);
-      window.alert('Nao foi possivel registrar a solicitacao LGPD.');
+      window.alert('Não foi possível registrar a solicitação LGPD.');
     } finally {
       setPrivacyAction(null);
     }
@@ -210,7 +415,7 @@ export default function Settings() {
           </span>
           <span className="text-[10px] font-mono text-gray-400">CONFIG_SYMMETRIC: ACTIVE</span>
         </div>
-        <h2 className="text-2xl font-bold text-os-text tracking-tight">ConfiguraÃ§Ãµes do OS</h2>
+        <h2 className="text-2xl font-bold text-os-text tracking-tight">Configurações do OS</h2>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -219,9 +424,10 @@ export default function Settings() {
             <button
               type="button"
               key={section.id}
+              onClick={() => setActiveSection(section.id)}
               className={cn(
                 'w-full flex items-center gap-3 px-3 py-2 rounded text-[11px] font-bold uppercase tracking-wider transition-all',
-                section.id === 'profile' ? 'bg-os-dark text-white' : 'text-gray-400 hover:bg-white hover:text-os-text',
+                activeSection === section.id ? 'bg-os-dark text-white' : 'text-gray-400 hover:bg-white hover:text-os-text',
               )}
             >
               <section.icon className="w-4 h-4" />
@@ -235,281 +441,402 @@ export default function Settings() {
               className="w-full flex items-center gap-3 px-3 py-2 rounded text-[11px] font-bold uppercase tracking-wider text-red-400 hover:bg-red-50 transition-all border border-transparent hover:border-red-100"
             >
               <LogOut className="w-4 h-4" />
-              Finalizar SessÃ£o
+              Finalizar Sessão
             </button>
           </div>
         </nav>
 
         <div className="lg:col-span-3 space-y-8">
-          <section className="bg-white rounded border border-gray-100 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-gray-50 bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-              Perfil do Operador
-            </div>
-            <div className="p-6 space-y-6">
-              <div className="flex items-center gap-6">
-                <div className="w-20 h-20 rounded-full bg-os-dark flex items-center justify-center text-white text-3xl font-black shadow-lg">
-                  {user?.displayName?.charAt(0) || 'U'}
-                </div>
-                <div>
-                  <h4 className="text-lg font-bold text-os-text leading-tight">{user?.displayName || 'Admin Operator'}</h4>
-                  <p className="text-xs font-mono text-gray-400 mb-2">{user?.email}</p>
-                  <button type="button" className="text-[10px] font-bold uppercase text-brand hover:underline">
-                    Trocar foto de perfil
-                  </button>
-                </div>
+          {activeSection === 'profile' && (
+            <section className="bg-white rounded border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-50 bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                Perfil do Operador
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Nome de ExibiÃ§Ã£o</label>
-                  <input
-                    defaultValue={user?.displayName || ''}
-                    className="w-full bg-gray-50 border border-gray-100 rounded px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-brand outline-none transition-all"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Cargo / FunÃ§Ã£o</label>
-                  <input
-                    defaultValue="Business Manager"
-                    className="w-full bg-gray-50 border border-gray-100 rounded px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-brand outline-none transition-all"
-                  />
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="bg-white rounded border border-gray-100 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-gray-50 bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-              NotificaÃ§Ãµes & Canais
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="flex items-center justify-between py-2 border-b border-gray-50">
-                <div className="flex items-start gap-3">
-                  <Mail className="w-4 h-4 text-brand mt-0.5" />
+              <div className="p-6 space-y-6">
+                <div className="flex items-center gap-6">
+                  <div className="w-20 h-20 rounded-full bg-os-dark flex items-center justify-center text-white text-3xl font-black shadow-lg overflow-hidden">
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt="Foto de perfil" className="w-full h-full object-cover" />
+                    ) : (
+                      (fullName || user?.email || 'U').charAt(0).toUpperCase()
+                    )}
+                  </div>
                   <div>
-                    <p className="text-xs font-bold text-os-text">E-mail transacional (Resend)</p>
-                    <p className="text-[10px] text-gray-400">Ativa alertas e mensagens operacionais enviadas pelo backend.</p>
+                    <h4 className="text-lg font-bold text-os-text leading-tight">{fullName || 'Operador'}</h4>
+                    <p className="text-xs font-mono text-gray-400 mb-2">{user?.email}</p>
+                    <label className="inline-flex items-center gap-2 mb-2 px-3 py-1.5 bg-gray-100 text-[9px] font-bold uppercase tracking-widest text-gray-500 rounded hover:bg-gray-200 transition-all cursor-pointer">
+                      {uploadingAvatar ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                      Enviar Foto
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="hidden"
+                        disabled={uploadingAvatar}
+                        onChange={(uploadEvent) => void handleAvatarUpload(uploadEvent)}
+                      />
+                    </label>
+                    <p className="text-[10px] font-bold uppercase text-brand">{role ? `Papel: ${role}` : 'Papel não identificado'}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => void handleSendTest('email')}
-                    disabled={testingChannel === 'email' || !preferences.email.enabled}
-                    className="px-3 py-1.5 bg-gray-100 text-[9px] font-bold uppercase tracking-widest text-gray-500 rounded hover:bg-gray-200 transition-all disabled:opacity-40 flex items-center gap-2"
-                  >
-                    {testingChannel === 'email' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                    Teste
-                  </button>
-                  <Toggle
-                    checked={preferences.email.enabled}
-                    disabled={savingChannel === 'email' || loading}
-                    onClick={() => void handleToggleChannel('email')}
-                  />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Nome de Exibição</label>
+                    <input
+                      value={fullName}
+                      onChange={(event) => setFullName(event.target.value)}
+                      className="w-full bg-gray-50 border border-gray-100 rounded px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-brand outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-gray-400">URL do Avatar</label>
+                    <input
+                      value={avatarUrl}
+                      onChange={(event) => setAvatarUrl(event.target.value)}
+                      placeholder="https://..."
+                      className="w-full bg-gray-50 border border-gray-100 rounded px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-brand outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Organização</label>
+                    <input
+                      value={organizationName}
+                      onChange={(event) => setOrganizationName(event.target.value)}
+                      disabled={!isAdmin}
+                      className="w-full bg-gray-50 border border-gray-100 rounded px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-brand outline-none transition-all disabled:opacity-60"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-gray-400">E-mail LGPD</label>
+                    <input
+                      value={lgpdContactEmail}
+                      onChange={(event) => setLgpdContactEmail(event.target.value)}
+                      disabled={!isAdmin}
+                      className="w-full bg-gray-50 border border-gray-100 rounded px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-brand outline-none transition-all disabled:opacity-60"
+                    />
+                  </div>
                 </div>
               </div>
+            </section>
+          )}
 
-              <div className="flex items-center justify-between py-2 border-b border-gray-50">
-                <div className="flex items-start gap-3">
-                  <Smartphone className="w-4 h-4 text-brand mt-0.5" />
+          {activeSection === 'notifications' && (
+            <section className="bg-white rounded border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-50 bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                Notificações & Canais
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="flex items-center justify-between py-2 border-b border-gray-50">
+                  <div className="flex items-start gap-3">
+                    <Mail className="w-4 h-4 text-brand mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-os-text">E-mail transacional (Resend)</p>
+                      <p className="text-[10px] text-gray-400">Ativa alertas e mensagens operacionais enviadas pelo backend.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleSendTest('email')}
+                      disabled={testingChannel === 'email' || !preferences.email.enabled}
+                      className="px-3 py-1.5 bg-gray-100 text-[9px] font-bold uppercase tracking-widest text-gray-500 rounded hover:bg-gray-200 transition-all disabled:opacity-40 flex items-center gap-2"
+                    >
+                      {testingChannel === 'email' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                      Teste
+                    </button>
+                    <Toggle
+                      checked={preferences.email.enabled}
+                      disabled={savingChannel === 'email' || loading}
+                      onClick={() => void handleToggleChannel('email')}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between py-2 border-b border-gray-50">
+                  <div className="flex items-start gap-3">
+                    <Smartphone className="w-4 h-4 text-brand mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-os-text">Push no navegador (OneSignal)</p>
+                      <p className="text-[10px] text-gray-400">
+                        Usa consentimento explícito e sincroniza a inscrição por usuário/autenticação.
+                      </p>
+                      <p className="text-[9px] font-mono text-gray-300 mt-1">
+                        PUSH_ID: {summary.pushSubscriptionId || 'N/A'} • STATUS: {summary.pushProviderStatus.toUpperCase()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleSendTest('push')}
+                      disabled={testingChannel === 'push' || !preferences.push.enabled}
+                      className="px-3 py-1.5 bg-gray-100 text-[9px] font-bold uppercase tracking-widest text-gray-500 rounded hover:bg-gray-200 transition-all disabled:opacity-40 flex items-center gap-2"
+                    >
+                      {testingChannel === 'push' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                      Teste
+                    </button>
+                    <Toggle
+                      checked={preferences.push.enabled}
+                      disabled={savingChannel === 'push' || loading}
+                      onClick={() => void handleToggleChannel('push')}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between py-2">
+                  <div className="flex items-start gap-3">
+                    <MessageSquare className="w-4 h-4 text-brand mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-os-text">Canal WhatsApp</p>
+                      <p className="text-[10px] text-gray-400">Preferência armazenada para automações futuras e trilhas de consentimento.</p>
+                    </div>
+                  </div>
+                  <Toggle
+                    checked={preferences.whatsapp.enabled}
+                    disabled={savingChannel === 'whatsapp' || loading}
+                    onClick={() => void handleToggleChannel('whatsapp')}
+                  />
+                </div>
+
+                <div className="p-4 rounded bg-gray-50 border border-gray-100">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-os-text">Estado do Push</span>
+                  </div>
+                  <p className="text-[10px] text-gray-500 leading-relaxed">
+                    Permissão do navegador: <strong>{pushStatus.permission ? 'LIBERADA' : 'NÃO LIBERADA'}</strong>
+                    {' '}• OneSignal User: <strong>{pushStatus.onesignalId || 'N/A'}</strong>
+                    {' '}• Opt-in: <strong>{pushStatus.optedIn ? 'ATIVO' : 'INATIVO'}</strong>
+                  </p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {activeSection === 'security' && (
+            <section className="bg-white rounded border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-50 bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                Status da Conta
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="flex items-center justify-between p-4 rounded bg-green-50 border border-green-100">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    <div>
+                      <p className="text-xs font-bold text-green-700">Sessão Supabase Ativa</p>
+                      <p className="text-[10px] text-green-600 opacity-80">
+                        {session?.user.email_confirmed_at ? 'E-mail confirmado.' : 'E-mail ainda sem confirmação registrada.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between py-2 border-b border-gray-50">
                   <div>
-                    <p className="text-xs font-bold text-os-text">Push no navegador (OneSignal)</p>
+                    <p className="text-xs font-bold text-os-text">Autenticação de Dois Fatores</p>
                     <p className="text-[10px] text-gray-400">
-                      Usa consentimento explÃ­cito e sincroniza a inscriÃ§Ã£o por usuÃ¡rio/autenticaÃ§Ã£o.
-                    </p>
-                    <p className="text-[9px] font-mono text-gray-300 mt-1">
-                      PUSH_ID: {summary.pushSubscriptionId || 'N/A'} â€¢ STATUS: {summary.pushProviderStatus.toUpperCase()}
+                      {mfaFactorCount === null
+                        ? 'Status indisponível para esta sessão.'
+                        : `${mfaFactorCount} fator(es) verificado(s) na conta.`}
                     </p>
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => void handleSendTest('push')}
-                    disabled={testingChannel === 'push' || !preferences.push.enabled}
+                    onClick={() => void loadMfaStatus()}
+                    disabled={securityLoading}
                     className="px-3 py-1.5 bg-gray-100 text-[9px] font-bold uppercase tracking-widest text-gray-500 rounded hover:bg-gray-200 transition-all disabled:opacity-40 flex items-center gap-2"
                   >
-                    {testingChannel === 'push' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                    Teste
+                    {securityLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    Atualizar
                   </button>
-                  <Toggle
-                    checked={preferences.push.enabled}
-                    disabled={savingChannel === 'push' || loading}
-                    onClick={() => void handleToggleChannel('push')}
-                  />
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between py-2">
-                <div className="flex items-start gap-3">
-                  <MessageSquare className="w-4 h-4 text-brand mt-0.5" />
+                <div className="flex items-center justify-between py-2">
                   <div>
-                    <p className="text-xs font-bold text-os-text">Canal WhatsApp</p>
-                    <p className="text-[10px] text-gray-400">PreferÃªncia armazenada para automaÃ§Ãµes futuras e trilhas de consentimento.</p>
+                    <p className="text-xs font-bold text-os-text">Redefinição de Senha</p>
+                    <p className="text-[10px] text-gray-400">Envia um link seguro para o e-mail autenticado.</p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => void handlePasswordReset()}
+                    disabled={securityLoading}
+                    className="px-3 py-1.5 bg-os-dark text-white text-[9px] font-bold uppercase tracking-widest rounded hover:bg-brand transition-all disabled:opacity-40"
+                  >
+                    Enviar Link
+                  </button>
                 </div>
-                <Toggle
-                  checked={preferences.whatsapp.enabled}
-                  disabled={savingChannel === 'whatsapp' || loading}
-                  onClick={() => void handleToggleChannel('whatsapp')}
-                />
               </div>
+            </section>
+          )}
 
-              <div className="p-4 rounded bg-gray-50 border border-gray-100">
-                <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-os-text">Estado do Push</span>
+          {activeSection === 'database' && (
+            <section className="bg-white rounded border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-50 bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                Centro de Privacidade LGPD
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => void handlePrivacyExport()}
+                    disabled={privacyAction !== null}
+                    className="p-4 rounded border border-gray-100 bg-gray-50/50 text-left hover:border-brand transition-all disabled:opacity-50"
+                  >
+                    <Download className="w-5 h-5 text-brand mb-3" />
+                    <p className="text-[10px] font-black uppercase tracking-widest text-os-text mb-1">Exportar Meus Dados</p>
+                    <p className="text-[10px] text-gray-400 leading-relaxed">Gera uma exportação eletrônica dos dados vinculados ao usuário autenticado.</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void handlePrivacyRequest('anonymization')}
+                    disabled={privacyAction !== null}
+                    className="p-4 rounded border border-gray-100 bg-gray-50/50 text-left hover:border-brand transition-all disabled:opacity-50"
+                  >
+                    {privacyAction === 'anonymization' ? (
+                      <Loader2 className="w-5 h-5 text-brand mb-3 animate-spin" />
+                    ) : (
+                      <FileSearch className="w-5 h-5 text-brand mb-3" />
+                    )}
+                    <p className="text-[10px] font-black uppercase tracking-widest text-os-text mb-1">Solicitar Anonimização</p>
+                    <p className="text-[10px] text-gray-400 leading-relaxed">Registra pedido formal de anonimização de dados excessivos ou desnecessários.</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void handlePrivacyRequest('deletion')}
+                    disabled={privacyAction !== null}
+                    className="p-4 rounded border border-gray-100 bg-gray-50/50 text-left hover:border-brand transition-all disabled:opacity-50"
+                  >
+                    {privacyAction === 'deletion' ? (
+                      <Loader2 className="w-5 h-5 text-brand mb-3 animate-spin" />
+                    ) : (
+                      <Eraser className="w-5 h-5 text-brand mb-3" />
+                    )}
+                    <p className="text-[10px] font-black uppercase tracking-widest text-os-text mb-1">Solicitar Eliminação</p>
+                    <p className="text-[10px] text-gray-400 leading-relaxed">Abre pedido para eliminação dos dados tratados com base em consentimento, quando aplicável.</p>
+                  </button>
                 </div>
-                <p className="text-[10px] text-gray-500 leading-relaxed">
-                  PermissÃ£o do navegador: <strong>{pushStatus.permission ? 'LIBERADA' : 'NAO LIBERADA'}</strong>
-                  {' '}â€¢ OneSignal User: <strong>{pushStatus.onesignalId || 'N/A'}</strong>
-                  {' '}â€¢ Opt-in: <strong>{pushStatus.optedIn ? 'ATIVO' : 'INATIVO'}</strong>
-                </p>
-              </div>
-            </div>
-          </section>
 
-          <section className="bg-white rounded border border-gray-100 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-gray-50 bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-              Status da Conta
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="flex items-center justify-between p-4 rounded bg-green-50 border border-green-100">
-                <div className="flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-green-500" />
-                  <div>
-                    <p className="text-xs font-bold text-green-700">VerificaÃ§Ã£o de Identidade ConcluÃ­da</p>
-                    <p className="text-[10px] text-green-600 opacity-80">NÃ­vel de acesso mÃ¡ximo permitido pelo Mykante OS.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="p-4 rounded bg-gray-50 border border-gray-100">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Contato LGPD</p>
+                    <p className="text-xs font-bold text-os-text">
+                      {organizationPrivacy?.lgpdContactEmail || 'Não configurado'}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-2">
+                      Organização: {organizationPrivacy?.name || 'Não identificado'}
+                    </p>
                   </div>
-                </div>
-              </div>
 
-              <div className="flex items-center justify-between py-2 border-b border-gray-50">
-                <div>
-                  <p className="text-xs font-bold text-os-text">AutenticaÃ§Ã£o de Dois Fatores</p>
-                  <p className="text-[10px] text-gray-400">ProteÃ§Ã£o adicional para acessos crÃ­ticos.</p>
-                </div>
-                <Toggle checked={false} onClick={() => undefined} />
-              </div>
-            </div>
-          </section>
-
-          <section className="bg-white rounded border border-gray-100 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-gray-50 bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-              Centro de Privacidade LGPD
-            </div>
-            <div className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <button
-                  type="button"
-                  onClick={() => void handlePrivacyExport()}
-                  disabled={privacyAction !== null}
-                  className="p-4 rounded border border-gray-100 bg-gray-50/50 text-left hover:border-brand transition-all disabled:opacity-50"
-                >
-                  <Download className="w-5 h-5 text-brand mb-3" />
-                  <p className="text-[10px] font-black uppercase tracking-widest text-os-text mb-1">Exportar Meus Dados</p>
-                  <p className="text-[10px] text-gray-400 leading-relaxed">Gera uma exportacao eletronica dos dados vinculados ao usuario autenticado.</p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => void handlePrivacyRequest('anonymization')}
-                  disabled={privacyAction !== null}
-                  className="p-4 rounded border border-gray-100 bg-gray-50/50 text-left hover:border-brand transition-all disabled:opacity-50"
-                >
-                  {privacyAction === 'anonymization' ? (
-                    <Loader2 className="w-5 h-5 text-brand mb-3 animate-spin" />
-                  ) : (
-                    <FileSearch className="w-5 h-5 text-brand mb-3" />
-                  )}
-                  <p className="text-[10px] font-black uppercase tracking-widest text-os-text mb-1">Solicitar Anonimizacao</p>
-                  <p className="text-[10px] text-gray-400 leading-relaxed">Registra pedido formal de anonimização de dados excessivos ou desnecessarios.</p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => void handlePrivacyRequest('deletion')}
-                  disabled={privacyAction !== null}
-                  className="p-4 rounded border border-gray-100 bg-gray-50/50 text-left hover:border-brand transition-all disabled:opacity-50"
-                >
-                  {privacyAction === 'deletion' ? (
-                    <Loader2 className="w-5 h-5 text-brand mb-3 animate-spin" />
-                  ) : (
-                    <Eraser className="w-5 h-5 text-brand mb-3" />
-                  )}
-                  <p className="text-[10px] font-black uppercase tracking-widest text-os-text mb-1">Solicitar Eliminacao</p>
-                  <p className="text-[10px] text-gray-400 leading-relaxed">Abre pedido para eliminacao dos dados tratados com base em consentimento, quando aplicavel.</p>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="p-4 rounded bg-gray-50 border border-gray-100">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Contato LGPD</p>
-                  <p className="text-xs font-bold text-os-text">
-                    {organizationPrivacy?.lgpdContactEmail || 'Nao configurado'}
-                  </p>
-                  <p className="text-[10px] text-gray-400 mt-2">
-                    Organizacao: {organizationPrivacy?.name || 'Nao identificado'}
-                  </p>
+                  <div className="p-4 rounded bg-gray-50 border border-gray-100">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Solicitações Recentes</p>
+                    <div className="space-y-2">
+                      {requests.slice(0, 3).map((request) => (
+                        <div key={request.id} className="flex items-center justify-between text-[10px]">
+                          <span className="font-bold uppercase text-os-text">{request.requestType}</span>
+                          <span className="font-mono text-gray-400">{request.status}</span>
+                        </div>
+                      ))}
+                      {requests.length === 0 && (
+                        <p className="text-[10px] text-gray-400">Nenhuma solicitação registrada pelo usuário.</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="p-4 rounded bg-gray-50 border border-gray-100">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Solicitacoes Recentes</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Política de Retenção Aplicada</p>
                   <div className="space-y-2">
-                    {requests.slice(0, 3).map((request) => (
-                      <div key={request.id} className="flex items-center justify-between text-[10px]">
-                        <span className="font-bold uppercase text-os-text">{request.requestType}</span>
-                        <span className="font-mono text-gray-400">{request.status}</span>
+                    {retentionPolicies.map((policy) => (
+                      <div key={policy.id} className="flex items-center justify-between gap-4 text-[10px]">
+                        <span className="font-bold uppercase text-os-text">{policy.tableName}</span>
+                        <span className="font-mono text-gray-400">
+                          {policy.retentionDays} dias • base: {policy.legalBasis}
+                        </span>
                       </div>
                     ))}
-                    {requests.length === 0 && (
-                      <p className="text-[10px] text-gray-400">Nenhuma solicitacao registrada pelo usuario.</p>
+                    {retentionPolicies.length === 0 && (
+                      <p className="text-[10px] text-gray-400">Nenhuma política de retenção cadastrada.</p>
                     )}
                   </div>
                 </div>
               </div>
+            </section>
+          )}
 
-              <div className="p-4 rounded bg-gray-50 border border-gray-100">
-                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Politica de Retencao Aplicada</p>
-                <div className="space-y-2">
-                  {retentionPolicies.map((policy) => (
-                    <div key={policy.id} className="flex items-center justify-between gap-4 text-[10px]">
-                      <span className="font-bold uppercase text-os-text">{policy.tableName}</span>
-                      <span className="font-mono text-gray-400">
-                        {policy.retentionDays} dias â€¢ base: {policy.legalBasis}
-                      </span>
-                    </div>
-                  ))}
-                  {retentionPolicies.length === 0 && (
-                    <p className="text-[10px] text-gray-400">Nenhuma politica de retencao cadastrada.</p>
-                  )}
+          {activeSection === 'api' && (
+            <section className="bg-white rounded border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-50 bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                Integrações API
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="p-4 rounded bg-gray-50 border border-gray-100">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Supabase Project URL</p>
+                  <p className="text-xs font-mono text-os-text break-all">{import.meta.env.VITE_SUPABASE_URL}</p>
+                </div>
+
+                <div className="flex items-center justify-between p-4 rounded bg-gray-50 border border-gray-100">
+                  <div>
+                    <p className="text-xs font-bold text-os-text">Health Check do Supabase</p>
+                    <p className="text-[10px] text-gray-400">
+                      {apiHealth === 'idle' ? 'Ainda não verificado nesta sessão.' : apiHealthMessage}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleApiHealthCheck()}
+                    disabled={apiHealth === 'checking'}
+                    className="px-3 py-1.5 bg-os-dark text-white text-[9px] font-bold uppercase tracking-widest rounded hover:bg-brand transition-all disabled:opacity-40 flex items-center gap-2"
+                  >
+                    {apiHealth === 'checking' ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    Verificar
+                  </button>
+                </div>
+
+                <div className={cn(
+                  'p-4 rounded border flex items-center gap-3',
+                  apiHealth === 'ok' ? 'bg-green-50 border-green-100' : apiHealth === 'error' ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100',
+                )}>
+                  <CheckCircle2 className={cn('w-4 h-4', apiHealth === 'error' ? 'text-red-500' : 'text-green-500')} />
+                  <p className="text-[10px] text-gray-500 leading-relaxed">
+                    A página usa a chave pública no navegador. Chaves server-side permanecem apenas nas funções API e no ambiente da Vercel.
+                  </p>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
+          )}
 
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              className="px-6 py-2 bg-gray-100 text-gray-500 rounded text-[10px] font-bold uppercase tracking-wider hover:bg-gray-200 transition-all"
-            >
-              Descartar
-            </button>
-            <button
-              type="button"
-              className="px-6 py-2 bg-brand text-white rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-2 hover:bg-os-dark transition-all shadow-sm shadow-brand/20"
-            >
-              <Save className="w-4 h-4" />
-              Salvar AlteraÃ§Ãµes
-            </button>
-          </div>
+          {activeSection === 'profile' && (
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={handleDiscardProfile}
+                className="px-6 py-2 bg-gray-100 text-gray-500 rounded text-[10px] font-bold uppercase tracking-wider hover:bg-gray-200 transition-all"
+              >
+                Descartar
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveProfile()}
+                disabled={savingProfile}
+                className="px-6 py-2 bg-brand text-white rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-2 hover:bg-os-dark transition-all shadow-sm shadow-brand/20 disabled:opacity-60"
+              >
+                {savingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Salvar Alterações
+              </button>
+            </div>
+          )}
 
           <div className="p-6 rounded border border-amber-100 bg-amber-50/30 flex items-start gap-4">
             <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
             <div>
-              <p className="text-xs font-bold text-amber-800">Zona de Deploy CrÃ­tico</p>
+              <p className="text-xs font-bold text-amber-800">Zona de Deploy Crítico</p>
               <p className="text-[10px] text-amber-700 leading-relaxed opacity-80">
-                Resend e OneSignal dependem de chaves server-side e origens configuradas corretamente na Vercel e nos respectivos painÃ©is.
+                Resend e OneSignal dependem de chaves server-side e origens configuradas corretamente na Vercel e nos respectivos painéis.
               </p>
             </div>
           </div>

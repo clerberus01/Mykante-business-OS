@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Client, TimelineEvent } from '../../types';
+import { z } from 'zod';
+import type { Client, CrmDeal, CrmPipelineStage, TimelineEvent } from '../../types';
 import { SupabaseRepository } from '../shared/supabaseRepository';
 import { DataLayerError } from '../shared/dataErrors';
 import { normalizeStringArray, toUnixTimestamp } from '../shared/mappers';
@@ -47,6 +48,97 @@ type ClientEventRecord = {
   created_by: string | null;
 };
 
+type PipelineStageRecord = {
+  id: string;
+  organization_id: string;
+  key: string;
+  name: string;
+  position: number;
+  color: string | null;
+  is_default: boolean;
+};
+
+type DealRecord = {
+  id: string;
+  organization_id: string;
+  client_id: string;
+  stage_id: string;
+  title: string;
+  value: number | null;
+  probability: number;
+  status: CrmDeal['status'];
+  expected_close_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const clientRecordSchema = z.object({
+  id: z.string().uuid(),
+  organization_id: z.string().uuid(),
+  person_type: z.enum(['individual', 'company']),
+  name: z.string(),
+  tax_id: z.string(),
+  email: z.string(),
+  phone: z.string(),
+  company: z.string().nullable(),
+  contact_name: z.string().nullable(),
+  contact_role: z.string().nullable(),
+  contact_email: z.string().nullable(),
+  contact_phone: z.string().nullable(),
+  status: z.enum(['active', 'inactive', 'archived', 'lead']),
+  address_street: z.string().nullable(),
+  address_number: z.string().nullable(),
+  address_complement: z.string().nullable(),
+  address_zip_code: z.string().nullable(),
+  address_neighborhood: z.string().nullable(),
+  address_city: z.string().nullable(),
+  address_state: z.string().nullable(),
+  due_day: z.number().nullable(),
+  pix_key: z.string().nullable(),
+  banking_info: z.string().nullable(),
+  tags: z.array(z.string()).nullable(),
+  attention: z.string().nullable(),
+  origin: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+const clientEventRecordSchema = z.object({
+  id: z.string().uuid(),
+  organization_id: z.string().uuid(),
+  client_id: z.string().uuid(),
+  type: z.enum(['email', 'whatsapp', 'note', 'file', 'system']),
+  title: z.string(),
+  content: z.string(),
+  metadata: z.record(z.string(), z.unknown()).nullable(),
+  created_at: z.string(),
+  created_by: z.string().nullable(),
+});
+
+const pipelineStageRecordSchema = z.object({
+  id: z.string().uuid(),
+  organization_id: z.string().uuid(),
+  key: z.string(),
+  name: z.string(),
+  position: z.number(),
+  color: z.string().nullable(),
+  is_default: z.boolean(),
+});
+
+const dealRecordSchema = z.object({
+  id: z.string().uuid(),
+  organization_id: z.string().uuid(),
+  client_id: z.string().uuid(),
+  stage_id: z.string().uuid(),
+  title: z.string(),
+  value: z.coerce.number().nullable(),
+  probability: z.number(),
+  status: z.enum(['open', 'won', 'lost']),
+  expected_close_at: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
 function mapClientRecord(record: ClientRecord): Client {
   return {
     id: record.id,
@@ -76,6 +168,32 @@ function mapClientRecord(record: ClientRecord): Client {
     tags: normalizeStringArray(record.tags),
     attention: record.attention ?? '',
     origin: record.origin ?? '',
+    createdAt: toUnixTimestamp(record.created_at),
+    updatedAt: toUnixTimestamp(record.updated_at),
+  };
+}
+
+function mapPipelineStageRecord(record: PipelineStageRecord): CrmPipelineStage {
+  return {
+    id: record.id,
+    key: record.key,
+    name: record.name,
+    position: record.position,
+    color: record.color ?? 'bg-gray-100 text-gray-500',
+    isDefault: record.is_default,
+  };
+}
+
+function mapDealRecord(record: DealRecord): CrmDeal {
+  return {
+    id: record.id,
+    clientId: record.client_id,
+    stageId: record.stage_id,
+    title: record.title,
+    value: record.value ?? 0,
+    probability: record.probability,
+    status: record.status,
+    expectedCloseAt: record.expected_close_at ? toUnixTimestamp(record.expected_close_at) : undefined,
     createdAt: toUnixTimestamp(record.created_at),
     updatedAt: toUnixTimestamp(record.updated_at),
   };
@@ -144,7 +262,7 @@ export class SupabaseClientRepository extends SupabaseRepository {
       'Nao foi possivel carregar os clientes.',
     );
 
-    return (rows as ClientRecord[]).map(mapClientRecord);
+    return clientRecordSchema.array().parse(rows).map(mapClientRecord);
   }
 
   async createClient(client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) {
@@ -218,7 +336,7 @@ export class SupabaseClientRepository extends SupabaseRepository {
       'Nao foi possivel carregar os eventos do cliente.',
     );
 
-    return (rows as ClientEventRecord[]).map(mapTimelineEventRecord);
+    return clientEventRecordSchema.array().parse(rows).map(mapTimelineEventRecord);
   }
 
   async createEvent(
@@ -250,6 +368,61 @@ export class SupabaseClientRepository extends SupabaseRepository {
         .eq('id', eventId)
         .select('id'),
       'Nao foi possivel excluir o evento do cliente.',
+    );
+  }
+
+  async listPipelineStages() {
+    const rows = await this.unwrap(
+      this.supabase
+        .from('crm_pipeline_stages')
+        .select('*')
+        .eq('organization_id', this.organizationId)
+        .order('position', { ascending: true }),
+      'Nao foi possivel carregar os estagios do pipeline.',
+    );
+
+    return pipelineStageRecordSchema.array().parse(rows).map(mapPipelineStageRecord);
+  }
+
+  async listDeals() {
+    const rows = await this.unwrap(
+      this.supabase
+        .from('crm_deals')
+        .select('*')
+        .eq('organization_id', this.organizationId)
+        .eq('status', 'open')
+        .order('updated_at', { ascending: false }),
+      'Nao foi possivel carregar o pipeline.',
+    );
+
+    return dealRecordSchema.array().parse(rows).map(mapDealRecord);
+  }
+
+  async moveDeal(deal: CrmDeal, nextStage: CrmPipelineStage, previousStageName: string, createdBy: string) {
+    await this.unwrap(
+      this.supabase
+        .from('crm_deals')
+        .update({ stage_id: nextStage.id })
+        .eq('organization_id', this.organizationId)
+        .eq('id', deal.id)
+        .select('id'),
+      'Nao foi possivel mover a oportunidade.',
+    );
+
+    await this.createEvent(
+      deal.clientId,
+      {
+        clientId: deal.clientId,
+        type: 'system',
+        title: 'Pipeline atualizado',
+        content: `${deal.title}: ${previousStageName} -> ${nextStage.name}`,
+        metadata: {
+          dealId: deal.id,
+          from: previousStageName,
+          to: nextStage.name,
+        },
+      },
+      createdBy,
     );
   }
 }
