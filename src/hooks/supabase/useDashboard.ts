@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Client, Project, Task, Transaction } from '../../types';
 import {
   createClientRepository,
@@ -22,6 +23,13 @@ type TaskRecord = {
   due_date: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type DashboardData = {
+  clients: Client[];
+  projects: Project[];
+  transactions: Transaction[];
+  tasks: Task[];
 };
 
 function mapTaskRecord(record: TaskRecord): Task {
@@ -93,6 +101,7 @@ function compareProjects(a: Project, b: Project) {
 
 export function useSupabaseDashboard() {
   const { supabase, organizationId } = useRepositoryContext();
+  const queryClient = useQueryClient();
   const clientRepository = useMemo(
     () => (organizationId ? createClientRepository(supabase, organizationId) : null),
     [organizationId, supabase],
@@ -105,23 +114,17 @@ export function useSupabaseDashboard() {
     () => (organizationId ? createTransactionRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const [clients, setClients] = useState<Client[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(Boolean(organizationId));
+  const dashboardQueryKey = ['dashboard', organizationId] as const;
 
-  const loadDashboard = useCallback(async () => {
+  const fetchDashboard = useCallback(async (): Promise<DashboardData> => {
     if (!organizationId || !clientRepository || !projectRepository || !transactionRepository) {
-      setClients([]);
-      setProjects([]);
-      setTransactions([]);
-      setTasks([]);
-      setLoading(false);
-      return;
+      return {
+        clients: [] as Client[],
+        projects: [] as Project[],
+        transactions: [] as Transaction[],
+        tasks: [] as Task[],
+      };
     }
-
-    setLoading(true);
 
     try {
       const [clientRows, projectRows, transactionRows, taskRows] = await Promise.all([
@@ -142,27 +145,51 @@ export function useSupabaseDashboard() {
         throw taskRows.error;
       }
 
-      setClients(clientRows);
-      setProjects(projectRows);
-      setTransactions(transactionRows);
-      setTasks(((taskRows.data as TaskRecord[] | null) ?? []).map(mapTaskRecord));
+      return {
+        clients: clientRows,
+        projects: projectRows,
+        transactions: transactionRows,
+        tasks: ((taskRows.data as TaskRecord[] | null) ?? []).map(mapTaskRecord),
+      };
     } catch (error) {
       console.warn(
         'Supabase dashboard load failed:',
         toDataLayerError(error, 'Falha ao carregar os dados do dashboard.'),
       );
-      setClients([]);
-      setProjects([]);
-      setTransactions([]);
-      setTasks([]);
-    } finally {
-      setLoading(false);
+      return {
+        clients: [] as Client[],
+        projects: [] as Project[],
+        transactions: [] as Transaction[],
+        tasks: [] as Task[],
+      };
     }
   }, [clientRepository, organizationId, projectRepository, supabase, transactionRepository]);
 
-  useEffect(() => {
-    void loadDashboard();
-  }, [loadDashboard]);
+  const loadDashboard = useCallback(
+    () => queryClient.fetchQuery({
+      queryKey: dashboardQueryKey,
+      queryFn: fetchDashboard,
+    }),
+    [dashboardQueryKey, fetchDashboard, queryClient],
+  );
+
+  const dashboardQuery = useQuery<DashboardData>({
+    queryKey: dashboardQueryKey,
+    enabled: Boolean(organizationId && clientRepository && projectRepository && transactionRepository),
+    queryFn: fetchDashboard,
+  });
+  const dashboardData = dashboardQuery.error ? undefined : dashboardQuery.data;
+  const clients = dashboardData?.clients ?? [];
+  const projects = dashboardData?.projects ?? [];
+  const transactions = dashboardData?.transactions ?? [];
+  const tasks = dashboardData?.tasks ?? [];
+
+  if (dashboardQuery.error) {
+    console.warn(
+      'Supabase dashboard load failed:',
+      toDataLayerError(dashboardQuery.error, 'Falha ao carregar os dados do dashboard.'),
+    );
+  }
 
   const summary = useMemo(() => {
     const now = Date.now();
@@ -206,7 +233,7 @@ export function useSupabaseDashboard() {
   );
 
   return {
-    loading,
+    loading: dashboardQuery.isLoading,
     summary,
     featuredProjects,
     backlogTasks,

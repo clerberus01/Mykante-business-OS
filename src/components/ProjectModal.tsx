@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
 import { X, Loader2, Calendar, Target, DollarSign, Users, Info } from 'lucide-react';
-import { Project, ProjectStatus, PaymentStatus } from '../types';
+import { Project, ProjectStatus, PaymentStatus, ProjectTemplate } from '../types';
 import { cn } from '../lib/utils';
 import { useSupabaseClients as useClients } from '../hooks/supabase';
 
 interface ProjectModalProps {
   onClose: () => void;
-  onSave: (project: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'progress'>) => Promise<void>;
+  onSave: (project: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'progress'>, templateId?: string) => Promise<void>;
   initialData?: Project;
   onDelete?: () => Promise<void>;
+  templates?: ProjectTemplate[];
 }
 
-export default function ProjectModal({ onClose, onSave, initialData, onDelete }: ProjectModalProps) {
+export default function ProjectModal({ onClose, onSave, initialData, onDelete, templates = [] }: ProjectModalProps) {
   const { clients } = useClients();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -24,6 +25,7 @@ export default function ProjectModal({ onClose, onSave, initialData, onDelete }:
     deadline: initialData?.deadline ? new Date(initialData.deadline).toISOString().split('T')[0] : '',
     budget: initialData?.budget || 0,
     paymentStatus: initialData?.paymentStatus || 'pending' as PaymentStatus,
+    templateId: '',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,12 +37,13 @@ export default function ProjectModal({ onClose, onSave, initialData, onDelete }:
     
     setLoading(true);
     try {
+      const { templateId, ...projectData } = formData;
       await onSave({
-        ...formData,
+        ...projectData,
         startDate: new Date(formData.startDate).getTime(),
         deadline: new Date(formData.deadline).getTime(),
         budget: Number(formData.budget),
-      });
+      }, templateId || undefined);
       onClose();
     } catch (error) {
       console.error('Error saving project:', error);
@@ -133,6 +136,31 @@ export default function ProjectModal({ onClose, onSave, initialData, onDelete }:
 
             {/* Project Meta Info */}
             <div className="space-y-4">
+              {!initialData && templates.length > 0 && (
+                <div>
+                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                    <Target className="w-3 h-3" /> Template de Projeto
+                  </label>
+                  <select
+                    value={formData.templateId}
+                    onChange={e => {
+                      const template = templates.find(item => item.id === e.target.value);
+                      setFormData({
+                        ...formData,
+                        templateId: e.target.value,
+                        budget: template?.defaultBudget ?? formData.budget,
+                      });
+                    }}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded text-[10px] font-bold uppercase text-os-text outline-none"
+                  >
+                    <option value="">Projeto em branco</option>
+                    {templates.map(template => (
+                      <option key={template.id} value={template.id}>{template.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">

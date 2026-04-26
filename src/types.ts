@@ -103,12 +103,23 @@ export interface Project {
   updatedAt: number;
 }
 
+export interface ProjectTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  estimatedDays: number;
+  defaultBudget?: number;
+  createdAt: number;
+}
+
 export interface Milestone {
   id: string;
   projectId: string;
   title: string;
   order: number;
   status: 'pending' | 'completed';
+  approvalStatus?: 'not_requested' | 'requested' | 'approved' | 'rejected';
+  approvalUrl?: string;
   createdAt: number;
 }
 
@@ -124,10 +135,30 @@ export interface Task {
   status: TaskStatus;
   priority: TaskPriority;
   responsible: string;
+  responsibleId?: string;
   checklist: { id: string; text: string; completed: boolean }[];
+  timeSpentMinutes?: number;
+  activeTimeEntryId?: string;
+  billableMinutes?: number;
+  billedAmount?: number;
   dueDate?: number;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface ProjectTimeEntry {
+  id: string;
+  projectId: string;
+  taskId?: string;
+  userId?: string;
+  startedAt: number;
+  stoppedAt?: number;
+  durationMinutes?: number;
+  billable?: boolean;
+  hourlyRate?: number;
+  billedAmount?: number;
+  note?: string;
+  createdAt: number;
 }
 
 export interface ActivityLog {
@@ -153,12 +184,41 @@ export interface Transaction {
   dueDate: number;
   status: TransactionStatus;
   categoryId: string;
+  costCenterId?: string;
   clientId?: string;
   projectId?: string;
   isRecurring?: boolean;
   recurrenceInterval?: 'monthly' | 'weekly' | 'yearly';
   attachmentUrl?: string; // Link to receipt in Supabase
+  paymentProvider?: 'pagseguro' | 'manual';
+  paymentMethod?: 'pix' | 'boleto';
+  paymentUrl?: string;
+  providerPaymentId?: string;
+  bankStatementLineId?: string;
   createdAt: number;
+}
+
+export interface FinanceCategory {
+  id: string;
+  name: string;
+  type: TransactionType | 'both';
+  dreGroup: string;
+}
+
+export interface CostCenter {
+  id: string;
+  name: string;
+  code?: string;
+}
+
+export interface BankStatementLine {
+  id: string;
+  description: string;
+  amount: number;
+  occurredAt: number;
+  matchedTransactionId?: string;
+  matchConfidence?: number;
+  status: 'unmatched' | 'matched' | 'ignored';
 }
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue';

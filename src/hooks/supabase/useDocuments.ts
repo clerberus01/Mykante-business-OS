@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { StoredDocument } from '../../types';
 import { createDocumentRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
@@ -21,47 +22,51 @@ function guessFolder(file: File) {
 
 export function useSupabaseDocuments() {
   const { supabase, organizationId } = useRepositoryContext();
+  const queryClient = useQueryClient();
   const repository = useMemo(
     () => (organizationId ? createDocumentRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const [documents, setDocuments] = useState<StoredDocument[]>([]);
-  const [loading, setLoading] = useState(Boolean(organizationId));
+  const documentsQueryKey = ['documents', organizationId] as const;
+  const documentsQuery = useQuery({
+    queryKey: documentsQueryKey,
+    enabled: Boolean(repository),
+    queryFn: async () => {
+      if (!repository) return [];
+      return repository.listDocuments();
+    },
+  });
 
   const loadDocuments = useCallback(async () => {
     if (!repository) {
-      setDocuments([]);
-      setLoading(false);
-      return;
+      return [];
     }
-
-    setLoading(true);
 
     try {
-      setDocuments(await repository.listDocuments());
+      return await queryClient.fetchQuery({
+        queryKey: documentsQueryKey,
+        queryFn: () => repository.listDocuments(),
+      });
     } catch (error) {
       console.warn('Supabase documents load failed:', toDataLayerError(error, 'Falha ao carregar documentos.'));
-      setDocuments([]);
-    } finally {
-      setLoading(false);
+      return [];
     }
-  }, [repository]);
+  }, [documentsQueryKey, queryClient, repository]);
 
-  useEffect(() => {
-    void loadDocuments();
-  }, [loadDocuments]);
-
-  const uploadDocument = useCallback(
-    async (
-      file: File,
+  const uploadDocumentMutation = useMutation({
+    mutationFn: async ({
+      file,
+      options,
+    }: {
+      file: File;
       options?: {
         folder?: string;
         clientId?: string | null;
         projectId?: string | null;
         proposalId?: string | null;
         displayName?: string;
-      },
-    ) => {
+      };
+    }) => {
       if (!repository || !organizationId) return;
 
       const extension = file.name.includes('.') ? file.name.split('.').pop()?.toLowerCase() ?? '' : '';
@@ -97,14 +102,28 @@ export function useSupabaseDocuments() {
         await supabase.storage.from(DOCUMENT_BUCKET).remove([storagePath]);
         throw error;
       }
-
-      await loadDocuments();
     },
-    [loadDocuments, organizationId, repository, supabase],
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: documentsQueryKey });
+    },
+  });
+
+  const uploadDocument = useCallback(
+    (
+      file: File,
+      options?: {
+        folder?: string;
+        clientId?: string | null;
+        projectId?: string | null;
+        proposalId?: string | null;
+        displayName?: string;
+      },
+    ) => uploadDocumentMutation.mutateAsync({ file, options }),
+    [uploadDocumentMutation],
   );
 
-  const deleteDocument = useCallback(
-    async (document: StoredDocument) => {
+  const deleteDocumentMutation = useMutation({
+    mutationFn: async (document: StoredDocument) => {
       if (!repository) return;
 
       const { error } = await supabase.storage.from(document.bucketId).remove([document.storagePath]);
@@ -114,9 +133,15 @@ export function useSupabaseDocuments() {
       }
 
       await repository.softDeleteDocument(document.id);
-      await loadDocuments();
     },
-    [loadDocuments, repository, supabase],
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: documentsQueryKey });
+    },
+  });
+
+  const deleteDocument = useCallback(
+    (document: StoredDocument) => deleteDocumentMutation.mutateAsync(document),
+    [deleteDocumentMutation],
   );
 
   const downloadDocument = useCallback(
@@ -132,9 +157,13 @@ export function useSupabaseDocuments() {
     [supabase],
   );
 
+  if (documentsQuery.error) {
+    console.warn('Supabase documents load failed:', toDataLayerError(documentsQuery.error, 'Falha ao carregar documentos.'));
+  }
+
   return {
-    documents,
-    loading,
+    documents: documentsQuery.error ? [] : documentsQuery.data ?? [],
+    loading: documentsQuery.isLoading,
     uploadDocument,
     deleteDocument,
     downloadDocument,

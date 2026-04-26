@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Client, WhatsappConversation, WhatsappMessage } from '../../types';
 import { createWhatsappRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
@@ -25,40 +26,48 @@ function normalizeWhatsappPhone(phone: string) {
 export function useSupabaseWhatsapp() {
   const { supabase, organizationId, currentUserId } = useRepositoryContext();
   const { session } = useAuth();
+  const queryClient = useQueryClient();
   const repository = useMemo(
     () => (organizationId ? createWhatsappRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const [conversations, setConversations] = useState<WhatsappConversation[]>([]);
   const [messagesByConversation, setMessagesByConversation] = useState<Record<string, WhatsappMessage[]>>({});
-  const [loading, setLoading] = useState(Boolean(organizationId));
   const [sending, setSending] = useState(false);
+  const conversationsQueryKey = ['whatsapp', organizationId, 'conversations'] as const;
+  const conversationsQuery = useQuery({
+    queryKey: conversationsQueryKey,
+    enabled: Boolean(repository),
+    queryFn: async () => {
+      if (!repository) return [];
+      return repository.listConversations();
+    },
+  });
 
   const loadConversations = useCallback(async () => {
     if (!repository) {
-      setConversations([]);
-      setLoading(false);
-      return;
+      return [];
     }
-
-    setLoading(true);
 
     try {
-      setConversations(await repository.listConversations());
+      return await queryClient.fetchQuery({
+        queryKey: conversationsQueryKey,
+        queryFn: () => repository.listConversations(),
+      });
     } catch (error) {
       console.warn('Supabase WhatsApp conversations load failed:', toDataLayerError(error, 'Falha ao carregar WhatsApp.'));
-      setConversations([]);
-    } finally {
-      setLoading(false);
+      return [];
     }
-  }, [repository]);
+  }, [conversationsQueryKey, queryClient, repository]);
 
   const loadMessages = useCallback(
     async (conversationId: string) => {
       if (!repository) return;
 
       try {
-        const messages = await repository.listMessages(conversationId);
+        const messages = await queryClient.fetchQuery({
+          queryKey: ['whatsapp', organizationId, 'messages', conversationId],
+          queryFn: () => repository.listMessages(conversationId),
+        });
         setMessagesByConversation((current) => ({
           ...current,
           [conversationId]: messages,
@@ -67,15 +76,29 @@ export function useSupabaseWhatsapp() {
         console.warn('Supabase WhatsApp messages load failed:', toDataLayerError(error, 'Falha ao carregar mensagens.'));
       }
     },
-    [repository],
+    [organizationId, queryClient, repository],
   );
 
   useEffect(() => {
-    void loadConversations();
-  }, [loadConversations]);
+    for (const conversation of conversationsQuery.data ?? []) {
+      const cachedMessages = queryClient.getQueryData<WhatsappMessage[]>([
+        'whatsapp',
+        organizationId,
+        'messages',
+        conversation.id,
+      ]);
 
-  const openClientConversation = useCallback(
-    async (client: Client) => {
+      if (cachedMessages) {
+        setMessagesByConversation((current) => ({
+          ...current,
+          [conversation.id]: cachedMessages,
+        }));
+      }
+    }
+  }, [conversationsQuery.data, organizationId, queryClient]);
+
+  const openClientConversationMutation = useMutation({
+    mutationFn: async (client: Client) => {
       if (!repository) return null;
 
       const phoneE164 = normalizeWhatsappPhone(client.contactPhone || client.phone);
@@ -91,21 +114,23 @@ export function useSupabaseWhatsapp() {
         userId: currentUserId,
       });
 
-      await loadConversations();
       await loadMessages(conversation.id);
       return conversation;
     },
-    [currentUserId, loadConversations, loadMessages, repository],
-  );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: conversationsQueryKey });
+    },
+  });
 
-  const markConversationRead = useCallback(
-    async (conversationId: string) => {
+  const markConversationReadMutation = useMutation({
+    mutationFn: async (conversationId: string) => {
       if (!repository) return;
       await repository.markConversationRead(conversationId);
-      await loadConversations();
     },
-    [loadConversations, repository],
-  );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: conversationsQueryKey });
+    },
+  });
 
   const sendMessage = useCallback(
     async (conversationId: string, body: string) => {
@@ -140,22 +165,33 @@ export function useSupabaseWhatsapp() {
           throw new Error(payload.error || 'Falha ao enviar WhatsApp.');
         }
 
-        await Promise.all([loadConversations(), loadMessages(conversationId)]);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: conversationsQueryKey }),
+          queryClient.invalidateQueries({ queryKey: ['whatsapp', organizationId, 'messages', conversationId] }),
+        ]);
+        await loadMessages(conversationId);
       } finally {
         setSending(false);
       }
     },
-    [loadConversations, loadMessages, session?.access_token],
+    [conversationsQueryKey, loadMessages, organizationId, queryClient, session?.access_token],
   );
 
+  if (conversationsQuery.error) {
+    console.warn(
+      'Supabase WhatsApp conversations load failed:',
+      toDataLayerError(conversationsQuery.error, 'Falha ao carregar WhatsApp.'),
+    );
+  }
+
   return {
-    conversations,
+    conversations: conversationsQuery.error ? [] : conversationsQuery.data ?? [],
     messagesByConversation,
-    loading,
+    loading: conversationsQuery.isLoading,
     sending,
-    openClientConversation,
+    openClientConversation: openClientConversationMutation.mutateAsync,
     loadMessages,
-    markConversationRead,
+    markConversationRead: markConversationReadMutation.mutateAsync,
     sendMessage,
     refreshWhatsapp: loadConversations,
   };

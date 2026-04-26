@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { jsPDF } from 'jspdf';
 import { 
   BarChart3, 
   Calendar, 
@@ -38,8 +39,18 @@ interface ProjectDetailProps {
 }
 
 export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetailProps) {
-  const { milestones, loading: loadingMilestones, updateMilestone, addMilestone } = useMilestones(project.id);
-  const { tasks, loading: loadingTasks, updateTask, addTask } = useTasks(project.id);
+  const { milestones, loading: loadingMilestones, updateMilestone, addMilestone, requestMilestoneApproval } = useMilestones(project.id);
+  const {
+    tasks,
+    loading: loadingTasks,
+    updateTask,
+    deleteTask,
+    addTask,
+    addChecklistItem,
+    updateChecklistItem,
+    startTimer,
+    stopTimer,
+  } = useTasks(project.id);
   const { activities, addActivity } = useProjectActivity(project.id);
   const { clients } = useClients();
   const { transactions } = useTransactions();
@@ -51,7 +62,7 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
   const projectBalance = projectTransactions.reduce((acc, t) => t.type === 'income' ? acc + t.amount : acc - t.amount, 0);
   const projectDocuments = documents.filter(document => document.projectId === project.id);
 
-  const [activeTab, setActiveTab ] = useState<'kanban' | 'milestones' | 'files' | 'finance' | 'activity'>('kanban');
+  const [activeTab, setActiveTab ] = useState<'kanban' | 'milestones' | 'team' | 'files' | 'finance' | 'reports' | 'activity'>('kanban');
 
   const [showNewMilestone, setShowNewMilestone] = useState(false);
   const [newMilestoneTitle, setNewMilestoneTitle] = useState('');
@@ -60,7 +71,32 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [selectedMilestoneId, setSelectedMilestoneId] = useState('');
 
-  const progress = project.progress || 0;
+  const progress = tasks.length > 0
+    ? Math.round((tasks.filter((task) => task.status === 'done').length / tasks.length) * 100)
+    : project.progress || 0;
+  const totalMinutes = tasks.reduce((sum, task) => sum + (task.timeSpentMinutes ?? 0), 0);
+  const billableMinutes = tasks.reduce((sum, task) => sum + (task.billableMinutes ?? 0), 0);
+  const billedAmount = tasks.reduce((sum, task) => sum + (task.billedAmount ?? 0), 0);
+  const projectedRevenue = Math.round((project.budget * progress) / 100);
+  const totalIncome = projectTransactions.filter(t => t.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
+  const revenueGap = Math.max(0, projectedRevenue - totalIncome);
+  const daysTotal = Math.max(1, Math.ceil((project.deadline - project.startDate) / 86400000));
+  const daysElapsed = Math.min(daysTotal, Math.max(0, Math.ceil((Date.now() - project.startDate) / 86400000)));
+  const expectedRemaining = Math.max(0, tasks.length - Math.round((tasks.length * daysElapsed) / daysTotal));
+  const actualRemaining = tasks.filter(task => task.status !== 'done').length;
+  type TeamAllocation = { name: string; minutes: number; tasks: number; active: number; urgent: number };
+  const teamAllocationMap = tasks.reduce<Record<string, TeamAllocation>>((acc, task) => {
+    const key = task.responsibleId || task.responsible || 'sem-responsavel';
+    acc[key] ??= { name: task.responsible || 'Sem responsavel', minutes: 0, tasks: 0, active: 0, urgent: 0 };
+    acc[key].minutes += task.timeSpentMinutes ?? 0;
+    acc[key].tasks += task.status !== 'done' ? 1 : 0;
+    acc[key].active += task.status === 'doing' ? 1 : 0;
+    acc[key].urgent += task.priority === 'urgent' && task.status !== 'done' ? 1 : 0;
+    return acc;
+  }, {});
+  const teamAllocation: TeamAllocation[] = Object.keys(teamAllocationMap)
+    .map((key) => teamAllocationMap[key])
+    .sort((a, b) => b.tasks - a.tasks || b.minutes - a.minutes);
 
   const handleAddMilestone = async () => {
     if (!newMilestoneTitle) return;
@@ -76,10 +112,27 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
   };
 
   const handleAddTask = async () => {
-    if (!newTaskTitle || !selectedMilestoneId) return;
+    if (!newTaskTitle) return;
+
+    let milestoneId = selectedMilestoneId || milestones[0]?.id;
+
+    if (!milestoneId) {
+      milestoneId = await addMilestone({
+        projectId: project.id,
+        title: 'Backlog',
+        order: 0,
+        status: 'pending',
+      }) ?? '';
+    }
+
+    if (!milestoneId) {
+      window.alert('Nao foi possivel preparar a etapa da tarefa.');
+      return;
+    }
+
     await addTask({
       projectId: project.id,
-      milestoneId: selectedMilestoneId,
+      milestoneId,
       title: newTaskTitle,
       status: 'todo',
       priority: 'medium',
@@ -111,6 +164,119 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
       `Tarefa "${task.title}" movida para ${newStatus}.`,
       'Operador'
     );
+  };
+
+  const handleDeleteTask = async (task: Task) => {
+    if (!window.confirm(`Deseja excluir a tarefa "${task.title}"?`)) {
+      return;
+    }
+
+    try {
+      await deleteTask(task.id);
+      addActivity('Tarefa Excluida', `Tarefa "${task.title}" removida do projeto.`, 'Operador');
+    } catch (error) {
+      console.error('Task delete failed:', error);
+      window.alert('Nao foi possivel excluir a tarefa. Verifique as permissoes e tente novamente.');
+    }
+  };
+
+  const handleAddChecklistItem = async (task: Task) => {
+    const text = window.prompt('Novo item de checklist');
+    const trimmedText = text?.trim();
+
+    if (!trimmedText) return;
+
+    await addChecklistItem(task.id, trimmedText);
+    addActivity('Checklist Atualizado', `Item adicionado em "${task.title}".`, 'Operador');
+  };
+
+  const handleToggleChecklistItem = async (task: Task, itemId: string, completed: boolean) => {
+    await updateChecklistItem(task.id, itemId, completed);
+    addActivity('Checklist Atualizado', `Checklist de "${task.title}" atualizado.`, 'Operador');
+  };
+
+  const handleToggleTimer = async (task: Task) => {
+    if (task.activeTimeEntryId) {
+      const rateInput = window.prompt('Valor hora para faturamento automatico (vazio = sem faturar agora)', '150');
+      const hourlyRate = rateInput?.trim() ? Number(rateInput.replace(',', '.')) : undefined;
+      await stopTimer(task.activeTimeEntryId, Number.isFinite(hourlyRate) ? hourlyRate : undefined);
+      addActivity(
+        'Tempo Registrado',
+        `Apontamento de tempo encerrado em "${task.title}"${hourlyRate ? ` com valor hora de ${formatCurrency(hourlyRate)}` : ''}.`,
+        'Operador',
+      );
+      return;
+    }
+
+    await startTimer(task.id);
+    addActivity('Tempo Iniciado', `Apontamento de tempo iniciado em "${task.title}".`, 'Operador');
+  };
+
+  const buildProjectBriefing = () => [
+    `Briefing do projeto: ${project.name}`,
+    `Cliente: ${client?.name || 'Nao vinculado'}`,
+    `Prazo: ${formatDate(project.deadline)}`,
+    `Progresso: ${progress}%`,
+    `Orcamento: ${formatCurrency(project.budget)}`,
+    `Proxima etapa: ${milestones.find(milestone => milestone.status !== 'completed')?.title || 'Todas as etapas concluidas'}`,
+    '',
+    project.description || 'Sem descricao registrada.',
+  ].join('\n');
+
+  const openWhatsappMessage = (body: string) => {
+    const phone = (client?.contactPhone || client?.phone || '').replace(/\D/g, '');
+
+    if (!phone) {
+      window.alert('Cliente sem telefone para WhatsApp.');
+      return;
+    }
+
+    const normalizedPhone = phone.startsWith('55') ? phone : `55${phone}`;
+    window.open(`https://wa.me/${normalizedPhone}?text=${encodeURIComponent(body)}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleSendBriefing = () => {
+    openWhatsappMessage(buildProjectBriefing());
+    void addActivity('Briefing Enviado', 'Briefing do projeto preparado para envio via WhatsApp.', 'Operador');
+  };
+
+  const handleRequestMilestoneApproval = async (milestone: Milestone) => {
+    const approvalUrl = `${window.location.origin}/approval/milestone/${milestone.id}`;
+    await requestMilestoneApproval(milestone.id, approvalUrl);
+    openWhatsappMessage([
+      `Aprovacao de etapa do projeto: ${project.name}`,
+      `Etapa: ${milestone.title}`,
+      `Link de aprovacao: ${approvalUrl}`,
+    ].join('\n'));
+    void addActivity('Aprovacao Solicitada', `Link de aprovacao enviado para "${milestone.title}".`, 'Operador');
+  };
+
+  const handleExportStatusPdf = () => {
+    const doc = new jsPDF();
+    const margin = 16;
+
+    doc.setFontSize(16);
+    doc.text(`Status do Projeto - ${project.name}`, margin, 20);
+    doc.setFontSize(10);
+    doc.text(`Cliente: ${client?.name || 'Nao vinculado'}`, margin, 32);
+    doc.text(`Prazo: ${formatDate(project.deadline)}`, margin, 39);
+    doc.text(`Progresso: ${progress}%`, margin, 46);
+    doc.text(`Orcamento: ${formatCurrency(project.budget)}`, margin, 53);
+    doc.text(`Receita projetada: ${formatCurrency(projectedRevenue)}`, margin, 60);
+    doc.text(`Horas registradas: ${Math.round((totalMinutes / 60) * 10) / 10}h`, margin, 67);
+    doc.text(`Horas faturaveis: ${Math.round((billableMinutes / 60) * 10) / 10}h`, margin, 74);
+    doc.text('Etapas', margin, 88);
+    milestones.slice(0, 12).forEach((milestone, index) => {
+      doc.text(`- ${milestone.title}: ${milestone.status}`, margin, 98 + index * 7);
+    });
+    doc.text('Burndown', margin, 190);
+    doc.line(margin, 230, 190, 230);
+    doc.line(margin, 230, margin, 198);
+    doc.line(margin, 198, 190, 230);
+    doc.setDrawColor(0, 112, 243);
+    doc.line(margin, 198 + ((tasks.length - actualRemaining) / Math.max(1, tasks.length)) * 32, 190, 198 + ((tasks.length - expectedRemaining) / Math.max(1, tasks.length)) * 32);
+    doc.save(`status-${project.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf`);
+    void addActivity('Relatorio Exportado', 'PDF de status do projeto gerado.', 'Operador');
   };
 
   const handleProjectFileSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -157,6 +323,14 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
           </div>
 
           <div className="flex items-center gap-4">
+             <button
+               type="button"
+               onClick={handleSendBriefing}
+               className="px-4 py-2 border border-gray-200 rounded text-[10px] font-black uppercase tracking-widest text-os-text hover:border-brand hover:text-brand transition-all flex items-center gap-2"
+             >
+               <Send className="w-3.5 h-3.5" />
+               Enviar Briefing
+             </button>
              <button
                type="button"
                onClick={() => onEdit(project)}
@@ -206,7 +380,9 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
           {[
             { id: 'kanban', label: 'Quadro Kanban', icon: LayoutDashboard },
             { id: 'milestones', label: 'Etapas de Entrega', icon: CheckCircle2 },
+            { id: 'team', label: 'Equipe', icon: Users },
             { id: 'finance', label: 'Financeiro', icon: CreditCard },
+            { id: 'reports', label: 'Relatorios', icon: BarChart3 },
             { id: 'files', label: 'Repositório Central', icon: FolderOpen },
             { id: 'activity', label: 'Log Técnico', icon: History },
           ].map(tab => (
@@ -268,11 +444,61 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
                                   task.priority === 'urgent' ? "bg-red-50 text-red-600" :
                                   task.priority === 'high' ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-blue-600"
                                 )}>{task.priority}</span>
-                                <MoreVertical className="w-3.5 h-3.5 text-gray-300 opacity-0 group-hover:opacity-100" />
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void handleDeleteTask(task);
+                                  }}
+                                  onDragStart={(event) => event.preventDefault()}
+                                  className="p-1 rounded text-gray-300 opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 transition-all"
+                                  title="Excluir tarefa"
+                                  aria-label="Excluir tarefa"
+                                >
+                                  <MoreVertical className="w-3.5 h-3.5" />
+                                </button>
                              </div>
                              <h4 className="text-xs font-bold text-os-text leading-tight mb-2">{task.title}</h4>
+                             <div className="flex items-center justify-between mb-2 text-[9px] font-mono text-gray-400 uppercase">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {task.timeSpentMinutes ?? 0} min
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleTimer(task)}
+                                  className={cn(
+                                    "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest",
+                                    task.activeTimeEntryId ? "bg-brand text-white" : "bg-gray-50 text-gray-400 hover:bg-gray-100"
+                                  )}
+                                >
+                                  {task.activeTimeEntryId ? 'Parar' : 'Iniciar'}
+                                </button>
+                             </div>
+                             {task.checklist.length > 0 && (
+                               <div className="mb-2 space-y-1">
+                                  {task.checklist.slice(0, 3).map((item) => (
+                                    <label key={item.id} className="flex items-center gap-2 text-[9px] text-gray-500">
+                                      <input
+                                        type="checkbox"
+                                        checked={item.completed}
+                                        onChange={(event) => void handleToggleChecklistItem(task, item.id, event.target.checked)}
+                                        className="w-3 h-3 accent-brand"
+                                      />
+                                      <span className={cn("truncate", item.completed && "line-through text-gray-300")}>{item.text}</span>
+                                    </label>
+                                  ))}
+                               </div>
+                             )}
                              <div className="flex items-center justify-between pt-2 border-t border-gray-50">
                                 <span className="text-[9px] font-mono text-gray-400 uppercase">{task.responsible}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleAddChecklistItem(task)}
+                                  className="text-[8px] font-black uppercase tracking-widest text-gray-300 hover:text-brand"
+                                >
+                                  + Checklist
+                                </button>
                                 {task.checklist.length > 0 && (
                                   <span className="text-[9px] font-mono font-bold text-brand">
                                      {task.checklist.filter(c => c.completed).length}/{task.checklist.length}
@@ -312,7 +538,7 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
                                        <button 
                                           type="button"
                                           onClick={handleAddTask}
-                                          disabled={!newTaskTitle || !selectedMilestoneId}
+                                          disabled={!newTaskTitle}
                                           className="flex-[2] py-2 bg-brand text-white text-[8px] font-black uppercase rounded shadow-sm disabled:opacity-50"
                                        >Criar</button>
                                     </div>
@@ -378,6 +604,13 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
                            </div>
                         </div>
                         <div className="flex items-center gap-4">
+                           <button
+                             type="button"
+                             onClick={() => void handleRequestMilestoneApproval(milestone)}
+                             className="px-4 py-2 rounded text-[9px] font-black uppercase tracking-[0.2em] bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 transition-all"
+                           >
+                              {milestone.approvalStatus === 'requested' ? 'REENVIAR_LINK' : 'SOLICITAR_APROVACAO'}
+                           </button>
                            <button 
                              type="button"
                              onClick={() => handleMilestoneToggle(milestone)}
@@ -393,6 +626,94 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
                         </div>
                      </div>
                    ))}
+                </div>
+             </div>
+           )}
+
+           {activeTab === 'team' && (
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                   <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Horas Registradas</h3>
+                   <p className="text-3xl font-black text-os-text">{Math.round((totalMinutes / 60) * 10) / 10}h</p>
+                   <p className="text-[10px] font-bold uppercase text-gray-400 mt-2">Billable: {Math.round((billableMinutes / 60) * 10) / 10}h</p>
+                </div>
+                <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                   <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Faturamento de Horas</h3>
+                   <p className="text-3xl font-black text-green-600">{formatCurrency(billedAmount)}</p>
+                   <p className="text-[10px] font-bold uppercase text-gray-400 mt-2">Gerado automaticamente ao parar timers com valor hora.</p>
+                </div>
+                <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                   <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Carga Critica</h3>
+                   <p className="text-3xl font-black text-brand">{teamAllocation.filter(member => member.tasks >= 5 || member.urgent > 0).length}</p>
+                   <p className="text-[10px] font-bold uppercase text-gray-400 mt-2">Membros com urgencias ou alta carga.</p>
+                </div>
+
+                <div className="md:col-span-3 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                   <div className="p-4 bg-gray-50 border-b border-gray-100">
+                      <h3 className="text-[10px] font-black uppercase tracking-widest text-os-text">Resource Allocation</h3>
+                   </div>
+                   <div className="divide-y divide-gray-50">
+                      {teamAllocation.map(member => {
+                        const overloaded = member.tasks >= 5 || member.urgent > 0;
+                        return (
+                          <div key={member.name} className="p-5 flex items-center justify-between">
+                             <div>
+                                <h4 className="text-sm font-black text-os-text">{member.name}</h4>
+                                <p className="text-[10px] font-mono text-gray-400 uppercase">{member.tasks} tarefas abertas • {member.active} em execução • {Math.round((member.minutes / 60) * 10) / 10}h registradas</p>
+                             </div>
+                             <span className={cn(
+                               "px-3 py-1 rounded text-[9px] font-black uppercase tracking-widest",
+                               overloaded ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
+                             )}>
+                                {overloaded ? 'SOBRECARREGADO' : 'OK'}
+                             </span>
+                          </div>
+                        );
+                      })}
+                      {teamAllocation.length === 0 && (
+                        <div className="p-8 text-center text-[10px] font-bold uppercase text-gray-300">Nenhuma tarefa atribuida.</div>
+                      )}
+                   </div>
+                </div>
+             </div>
+           )}
+
+           {activeTab === 'reports' && (
+             <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+                <div className="md:col-span-4 space-y-6">
+                   <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                      <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Forecast Financeiro</h3>
+                      <div className="space-y-4">
+                         <div className="flex justify-between"><span className="text-[10px] font-bold uppercase text-gray-400">Receita por progresso</span><span className="text-sm font-black">{formatCurrency(projectedRevenue)}</span></div>
+                         <div className="flex justify-between"><span className="text-[10px] font-bold uppercase text-gray-400">Receita registrada</span><span className="text-sm font-black text-green-600">{formatCurrency(totalIncome)}</span></div>
+                         <div className="flex justify-between pt-4 border-t border-gray-100"><span className="text-[10px] font-black uppercase text-os-text">Gap previsto</span><span className="text-sm font-black text-brand">{formatCurrency(revenueGap)}</span></div>
+                      </div>
+                   </div>
+                   <button type="button" onClick={handleExportStatusPdf} className="w-full py-3 bg-os-dark text-white rounded text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      Exportar PDF de Status
+                   </button>
+                </div>
+                <div className="md:col-span-8 bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+                   <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Burndown Chart</h3>
+                      <span className="text-[10px] font-mono text-gray-400">{actualRemaining} tarefas restantes</span>
+                   </div>
+                   <div className="h-64 border-l border-b border-gray-100 relative">
+                      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full overflow-visible">
+                        <line x1="0" y1="0" x2="100" y2="100" stroke="#e5e7eb" strokeWidth="1.5" />
+                        <line
+                          x1="0"
+                          y1={tasks.length ? ((tasks.length - actualRemaining) / tasks.length) * 100 : 100}
+                          x2="100"
+                          y2={tasks.length ? ((tasks.length - expectedRemaining) / tasks.length) * 100 : 100}
+                          stroke="#2563eb"
+                          strokeWidth="2"
+                        />
+                      </svg>
+                      <div className="absolute left-3 top-3 text-[9px] font-bold uppercase text-gray-400">Planejado</div>
+                      <div className="absolute right-3 bottom-3 text-[9px] font-bold uppercase text-brand">Real</div>
+                   </div>
                 </div>
              </div>
            )}

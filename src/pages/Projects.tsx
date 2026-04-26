@@ -16,7 +16,7 @@ import ProjectModal from '../components/ProjectModal';
 import { clearPendingNavigationIntent, getPendingNavigationIntent } from '../lib/navigation';
 
 export default function Projects() {
-  const { projects, loading, addProject, updateProject, deleteProject } = useProjects();
+  const { projects, templates, loading, addProject, updateProject, deleteProject } = useProjects();
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -70,6 +70,7 @@ export default function Projects() {
           <ProjectModal
             onClose={() => setShowModal(false)}
             initialData={editingProject}
+            templates={templates}
             onDelete={
               editingProject
                 ? async () => {
@@ -80,11 +81,11 @@ export default function Projects() {
                   }
                 : undefined
             }
-            onSave={async (data) => {
+            onSave={async (data, templateId) => {
               if (editingProject) {
                 await updateProject(editingProject.id, data);
               } else {
-                await addProject(data);
+                await addProject(data, templateId);
               }
             }}
           />
@@ -257,6 +258,7 @@ export default function Projects() {
         <ProjectModal 
           onClose={() => setShowModal(false)}
           initialData={editingProject}
+          templates={templates}
           onDelete={
             editingProject
               ? async () => {
@@ -265,11 +267,11 @@ export default function Projects() {
                 }
               : undefined
           }
-          onSave={async (data) => {
+          onSave={async (data, templateId) => {
             if (editingProject) {
               await updateProject(editingProject.id, data);
             } else {
-              await addProject(data);
+              await addProject(data, templateId);
             }
           }}
         />

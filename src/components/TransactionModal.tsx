@@ -10,7 +10,7 @@ import {
   Tag,
   Link2
 } from 'lucide-react';
-import { Transaction, TransactionType, TransactionStatus } from '../types';
+import { CostCenter, FinanceCategory, Transaction, TransactionType, TransactionStatus } from '../types';
 import { useSupabaseClients as useClients, useSupabaseProjects as useProjects } from '../hooks/supabase';
 import { cn } from '../lib/utils';
 
@@ -19,9 +19,11 @@ interface TransactionModalProps {
   onSave: (data: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
   initialData?: Transaction;
   defaultTimestamp?: number;
+  categories?: FinanceCategory[];
+  costCenters?: CostCenter[];
 }
 
-export default function TransactionModal({ onClose, onSave, initialData, defaultTimestamp }: TransactionModalProps) {
+export default function TransactionModal({ onClose, onSave, initialData, defaultTimestamp, categories = [], costCenters = [] }: TransactionModalProps) {
   const { clients } = useClients();
   const { projects } = useProjects();
   const [loading, setLoading] = useState(false);
@@ -36,15 +38,19 @@ export default function TransactionModal({ onClose, onSave, initialData, default
     dueDate: new Date(initialDueDate).toISOString().split('T')[0],
     status: initialData?.status || 'pending' as TransactionStatus,
     categoryId: initialData?.categoryId || 'Outros',
+    costCenterId: initialData?.costCenterId || '',
     clientId: initialData?.clientId || '',
     projectId: initialData?.projectId || '',
     isRecurring: initialData?.isRecurring || false,
     recurrenceInterval: initialData?.recurrenceInterval || 'monthly' as any,
   });
 
-  const categories = [
+  const fallbackCategories = [
     'Impostos', 'Salários', 'Ferramentas', 'Marketing', 'Aluguel', 'Serviços', 'Hardware', 'Software', 'Outros'
   ];
+  const categoryOptions = categories.length > 0
+    ? categories.filter((category) => category.type === 'both' || category.type === formData.type)
+    : fallbackCategories.map((name) => ({ id: name, name, type: 'both' as const, dreGroup: 'operational' }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,7 +145,20 @@ export default function TransactionModal({ onClose, onSave, initialData, default
                   onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
                   className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded text-xs font-bold text-os-text outline-none focus:border-brand"
                 >
-                  {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                  {categoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                  <Tag className="w-3 h-3" /> Centro de Custo
+                </label>
+                <select
+                  value={formData.costCenterId}
+                  onChange={e => setFormData({ ...formData, costCenterId: e.target.value })}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded text-xs font-bold text-os-text outline-none focus:border-brand"
+                >
+                  <option value="">Sem centro...</option>
+                  {costCenters.map(center => <option key={center.id} value={center.id}>{center.code ? `${center.code} - ` : ''}{center.name}</option>)}
                 </select>
               </div>
             </div>

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ActivityLog, Milestone, Project, Task } from '../../types';
+import { useCallback, useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ActivityLog, Milestone, Project, ProjectTemplate, Task } from '../../types';
 import { createProjectRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
 
@@ -9,61 +10,95 @@ export function useSupabaseProjects() {
     () => (organizationId ? createProjectRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(Boolean(organizationId));
+  const queryClient = useQueryClient();
+  const projectsQueryKey = ['projects', organizationId] as const;
+  const projectsQuery = useQuery({
+    queryKey: projectsQueryKey,
+    enabled: Boolean(repository),
+    queryFn: async () => {
+      if (!repository) return [];
+      return repository.listProjects();
+    },
+  });
 
   const loadProjects = useCallback(async () => {
     if (!repository) {
-      setProjects([]);
-      setLoading(false);
-      return;
+      return [];
     }
-
-    setLoading(true);
 
     try {
-      setProjects(await repository.listProjects());
+      return await queryClient.fetchQuery({
+        queryKey: projectsQueryKey,
+        queryFn: () => repository.listProjects(),
+      });
     } catch (error) {
       console.warn('Supabase projects load failed:', toDataLayerError(error, 'Falha ao carregar projetos.'));
-      setProjects([]);
-    } finally {
-      setLoading(false);
+      return [];
     }
-  }, [repository]);
+  }, [projectsQueryKey, queryClient, repository]);
 
-  useEffect(() => {
-    void loadProjects();
-  }, [loadProjects]);
-
-  const addProject = useCallback(
-    async (project: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'progress'>) => {
-      if (!repository) return undefined;
-      const projectId = await repository.createProject(project);
-      await loadProjects();
-      return projectId;
+  const templatesQueryKey = ['projects', organizationId, 'templates'] as const;
+  const templatesQuery = useQuery({
+    queryKey: templatesQueryKey,
+    enabled: Boolean(repository),
+    queryFn: async () => {
+      if (!repository) return [];
+      return repository.listProjectTemplates();
     },
-    [loadProjects, repository],
-  );
+  });
 
-  const updateProject = useCallback(
-    async (id: string, data: Partial<Project>) => {
+  const addProjectMutation = useMutation({
+    mutationFn: async ({
+      project,
+      templateId,
+    }: {
+      project: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'progress'>;
+      templateId?: string;
+    }) => {
+      if (!repository) return undefined;
+      return repository.createProjectFromTemplate(project, templateId);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: projectsQueryKey });
+    },
+  });
+
+  const updateProjectMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Project> }) => {
       if (!repository) return;
       await repository.updateProject(id, data);
-      await loadProjects();
     },
-    [loadProjects, repository],
-  );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: projectsQueryKey });
+    },
+  });
 
-  const deleteProject = useCallback(
-    async (id: string) => {
+  const deleteProjectMutation = useMutation({
+    mutationFn: async (id: string) => {
       if (!repository) return;
       await repository.softDeleteProject(id);
-      await loadProjects();
     },
-    [loadProjects, repository],
-  );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: projectsQueryKey });
+    },
+  });
 
-  return { projects, loading, addProject, updateProject, deleteProject, refreshProjects: loadProjects };
+  if (projectsQuery.error) {
+    console.warn('Supabase projects load failed:', toDataLayerError(projectsQuery.error, 'Falha ao carregar projetos.'));
+  }
+
+  return {
+    projects: projectsQuery.error ? [] : projectsQuery.data ?? [],
+    templates: templatesQuery.error ? [] as ProjectTemplate[] : templatesQuery.data ?? [],
+    loading: projectsQuery.isLoading,
+    addProject: (
+      project: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'progress'>,
+      templateId?: string,
+    ) => addProjectMutation.mutateAsync({ project, templateId }),
+    updateProject: (id: string, data: Partial<Project>) => updateProjectMutation.mutateAsync({ id, data }),
+    deleteProject: deleteProjectMutation.mutateAsync,
+    refreshProjects: loadProjects,
+  };
 }
 
 export function useSupabaseMilestones(projectId: string | null) {
@@ -72,107 +107,240 @@ export function useSupabaseMilestones(projectId: string | null) {
     () => (organizationId ? createProjectRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [loading, setLoading] = useState(Boolean(projectId && organizationId));
+  const queryClient = useQueryClient();
+  const milestonesQueryKey = ['projects', organizationId, 'milestones', projectId] as const;
+  const milestonesQuery = useQuery({
+    queryKey: milestonesQueryKey,
+    enabled: Boolean(repository && projectId),
+    queryFn: async () => {
+      if (!repository || !projectId) return [];
+      return repository.listMilestones(projectId);
+    },
+  });
 
   const loadMilestones = useCallback(async () => {
     if (!repository || !projectId) {
-      setMilestones([]);
-      setLoading(false);
-      return;
+      return [];
     }
 
-    setLoading(true);
-
     try {
-      setMilestones(await repository.listMilestones(projectId));
+      return await queryClient.fetchQuery({
+        queryKey: milestonesQueryKey,
+        queryFn: () => repository.listMilestones(projectId),
+      });
     } catch (error) {
       console.warn(
         'Supabase milestones load failed:',
         toDataLayerError(error, 'Falha ao carregar etapas do projeto.'),
       );
-      setMilestones([]);
-    } finally {
-      setLoading(false);
+      return [];
     }
-  }, [projectId, repository]);
+  }, [milestonesQueryKey, projectId, queryClient, repository]);
 
-  useEffect(() => {
-    void loadMilestones();
-  }, [loadMilestones]);
-
-  const addMilestone = useCallback(
-    async (milestone: Omit<Milestone, 'id' | 'createdAt'>) => {
+  const addMilestoneMutation = useMutation({
+    mutationFn: async (milestone: Omit<Milestone, 'id' | 'createdAt'>) => {
       if (!repository || !projectId) return;
-      await repository.createMilestone(projectId, milestone);
-      await loadMilestones();
+      return repository.createMilestone(projectId, milestone);
     },
-    [loadMilestones, projectId, repository],
-  );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: milestonesQueryKey });
+    },
+  });
 
-  const updateMilestone = useCallback(
-    async (id: string, data: Partial<Milestone>) => {
+  const updateMilestoneMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Milestone> }) => {
       if (!repository || !projectId) return;
       await repository.updateMilestone(projectId, id, data);
-      await loadMilestones();
     },
-    [loadMilestones, projectId, repository],
-  );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: milestonesQueryKey });
+    },
+  });
 
-  return { milestones, loading, addMilestone, updateMilestone, refreshMilestones: loadMilestones };
+  const requestMilestoneApprovalMutation = useMutation({
+    mutationFn: async ({ id, approvalUrl }: { id: string; approvalUrl: string }) => {
+      if (!repository || !projectId) return undefined;
+      return repository.requestMilestoneApproval(projectId, id, approvalUrl);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: milestonesQueryKey });
+    },
+  });
+
+  if (milestonesQuery.error) {
+    console.warn(
+      'Supabase milestones load failed:',
+      toDataLayerError(milestonesQuery.error, 'Falha ao carregar etapas do projeto.'),
+    );
+  }
+
+  return {
+    milestones: milestonesQuery.error ? [] : milestonesQuery.data ?? [],
+    loading: milestonesQuery.isLoading,
+    addMilestone: addMilestoneMutation.mutateAsync,
+    updateMilestone: (id: string, data: Partial<Milestone>) => updateMilestoneMutation.mutateAsync({ id, data }),
+    requestMilestoneApproval: (id: string, approvalUrl: string) =>
+      requestMilestoneApprovalMutation.mutateAsync({ id, approvalUrl }),
+    refreshMilestones: loadMilestones,
+  };
 }
 
 export function useSupabaseTasks(projectId: string | null) {
-  const { supabase, organizationId } = useRepositoryContext();
+  const { supabase, organizationId, currentUserId, currentUserName } = useRepositoryContext();
   const repository = useMemo(
     () => (organizationId ? createProjectRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(Boolean(projectId && organizationId));
+  const queryClient = useQueryClient();
+  const tasksQueryKey = ['projects', organizationId, 'tasks', projectId, currentUserId] as const;
+  const tasksQuery = useQuery({
+    queryKey: tasksQueryKey,
+    enabled: Boolean(repository && projectId),
+    queryFn: async () => {
+      if (!repository || !projectId) return [];
+      return repository.listTasks(projectId, currentUserId);
+    },
+  });
 
   const loadTasks = useCallback(async () => {
     if (!repository || !projectId) {
-      setTasks([]);
-      setLoading(false);
-      return;
+      return [];
     }
-
-    setLoading(true);
 
     try {
-      setTasks(await repository.listTasks(projectId));
+      return await queryClient.fetchQuery({
+        queryKey: tasksQueryKey,
+        queryFn: () => repository.listTasks(projectId, currentUserId),
+      });
     } catch (error) {
       console.warn('Supabase tasks load failed:', toDataLayerError(error, 'Falha ao carregar tarefas.'));
-      setTasks([]);
-    } finally {
-      setLoading(false);
+      return [];
     }
-  }, [projectId, repository]);
+  }, [currentUserId, projectId, queryClient, repository, tasksQueryKey]);
 
-  useEffect(() => {
-    void loadTasks();
-  }, [loadTasks]);
-
-  const addTask = useCallback(
-    async (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const addTaskMutation = useMutation({
+    mutationFn: async (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => {
       if (!repository || !projectId) return;
-      await repository.createTask(projectId, task);
-      await loadTasks();
+      return repository.createTask(projectId, {
+        ...task,
+        responsibleId: task.responsibleId ?? currentUserId,
+        responsible: task.responsible || currentUserName,
+      });
     },
-    [loadTasks, projectId, repository],
-  );
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ['projects', organizationId] }),
+      ]);
+      await queryClient.refetchQueries({ queryKey: tasksQueryKey });
+    },
+  });
 
-  const updateTask = useCallback(
-    async (id: string, data: Partial<Task>) => {
+  const updateTaskMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Task> }) => {
       if (!repository || !projectId) return;
       await repository.updateTask(projectId, id, data);
-      await loadTasks();
     },
-    [loadTasks, projectId, repository],
-  );
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ['projects', organizationId] }),
+      ]);
+    },
+  });
 
-  return { tasks, loading, addTask, updateTask, refreshTasks: loadTasks };
+  const deleteTaskMutation = useMutation({
+    mutationFn: async (id: string) => {
+      if (!repository || !projectId) return;
+      await repository.deleteTask(projectId, id);
+    },
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: tasksQueryKey });
+      const previousTasks = queryClient.getQueryData<Task[]>(tasksQueryKey);
+
+      queryClient.setQueryData<Task[]>(tasksQueryKey, (current) =>
+        (current ?? []).filter((task) => task.id !== id),
+      );
+
+      return { previousTasks };
+    },
+    onError: (_error, _id, context) => {
+      if (context?.previousTasks) {
+        queryClient.setQueryData(tasksQueryKey, context.previousTasks);
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ['projects', organizationId] }),
+      ]);
+      await queryClient.refetchQueries({ queryKey: tasksQueryKey });
+    },
+  });
+
+  const addChecklistItemMutation = useMutation({
+    mutationFn: async ({ taskId, text }: { taskId: string; text: string }) => {
+      if (!repository || !projectId) return;
+      await repository.addChecklistItem(projectId, taskId, text, currentUserId);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tasksQueryKey });
+    },
+  });
+
+  const updateChecklistItemMutation = useMutation({
+    mutationFn: async ({ taskId, itemId, completed }: { taskId: string; itemId: string; completed: boolean }) => {
+      if (!repository || !projectId) return;
+      await repository.updateChecklistItem(projectId, taskId, itemId, completed);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ['projects', organizationId] }),
+      ]);
+    },
+  });
+
+  const startTimerMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      if (!repository || !projectId) return;
+      await repository.startTimeEntry(projectId, taskId, currentUserId);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tasksQueryKey });
+    },
+  });
+
+  const stopTimerMutation = useMutation({
+    mutationFn: async ({ entryId, hourlyRate }: { entryId: string; hourlyRate?: number }) => {
+      if (!repository || !projectId) return;
+      await repository.stopTimeEntry(projectId, entryId, hourlyRate);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ['crm', organizationId, 'transactions'] }),
+      ]);
+    },
+  });
+
+  if (tasksQuery.error) {
+    console.warn('Supabase tasks load failed:', toDataLayerError(tasksQuery.error, 'Falha ao carregar tarefas.'));
+  }
+
+  return {
+    tasks: tasksQuery.error ? [] : tasksQuery.data ?? [],
+    loading: tasksQuery.isLoading,
+    addTask: addTaskMutation.mutateAsync,
+    updateTask: (id: string, data: Partial<Task>) => updateTaskMutation.mutateAsync({ id, data }),
+    deleteTask: deleteTaskMutation.mutateAsync,
+    addChecklistItem: (taskId: string, text: string) => addChecklistItemMutation.mutateAsync({ taskId, text }),
+    updateChecklistItem: (taskId: string, itemId: string, completed: boolean) =>
+      updateChecklistItemMutation.mutateAsync({ taskId, itemId, completed }),
+    startTimer: startTimerMutation.mutateAsync,
+    stopTimer: (entryId: string, hourlyRate?: number) => stopTimerMutation.mutateAsync({ entryId, hourlyRate }),
+    refreshTasks: loadTasks,
+  };
 }
 
 export function useSupabaseProjectActivity(projectId: string | null) {
@@ -181,31 +349,38 @@ export function useSupabaseProjectActivity(projectId: string | null) {
     () => (organizationId ? createProjectRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const queryClient = useQueryClient();
+  const activityQueryKey = ['projects', organizationId, 'activity', projectId] as const;
+  const activityQuery = useQuery({
+    queryKey: activityQueryKey,
+    enabled: Boolean(repository && projectId),
+    queryFn: async () => {
+      if (!repository || !projectId) return [];
+      return repository.listActivity(projectId);
+    },
+  });
 
   const loadActivities = useCallback(async () => {
     if (!repository || !projectId) {
-      setActivities([]);
-      return;
+      return [];
     }
 
     try {
-      setActivities(await repository.listActivity(projectId));
+      return await queryClient.fetchQuery({
+        queryKey: activityQueryKey,
+        queryFn: () => repository.listActivity(projectId),
+      });
     } catch (error) {
       console.warn(
         'Supabase project activity load failed:',
         toDataLayerError(error, 'Falha ao carregar a atividade do projeto.'),
       );
-      setActivities([]);
+      return [];
     }
-  }, [projectId, repository]);
+  }, [activityQueryKey, projectId, queryClient, repository]);
 
-  useEffect(() => {
-    void loadActivities();
-  }, [loadActivities]);
-
-  const addActivity = useCallback(
-    async (action: string, details: string, userName?: string) => {
+  const addActivityMutation = useMutation({
+    mutationFn: async ({ action, details, userName }: { action: string; details: string; userName?: string }) => {
       if (!repository || !projectId) return;
 
       await repository.createActivity(projectId, {
@@ -214,10 +389,23 @@ export function useSupabaseProjectActivity(projectId: string | null) {
         action,
         details,
       });
-      await loadActivities();
     },
-    [currentUserId, currentUserName, loadActivities, projectId, repository],
-  );
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: activityQueryKey });
+    },
+  });
 
-  return { activities, addActivity, refreshActivities: loadActivities };
+  if (activityQuery.error) {
+    console.warn(
+      'Supabase project activity load failed:',
+      toDataLayerError(activityQuery.error, 'Falha ao carregar a atividade do projeto.'),
+    );
+  }
+
+  return {
+    activities: activityQuery.error ? [] : activityQuery.data ?? [],
+    addActivity: (action: string, details: string, userName?: string) =>
+      addActivityMutation.mutateAsync({ action, details, userName }),
+    refreshActivities: loadActivities,
+  };
 }
