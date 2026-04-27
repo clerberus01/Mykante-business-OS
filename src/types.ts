@@ -26,6 +26,7 @@ export interface Client {
   contactRole?: string;
   contactEmail?: string;
   contactPhone?: string;
+  avatarUrl?: string;
   status: EntityStatus;
   
   // Financial

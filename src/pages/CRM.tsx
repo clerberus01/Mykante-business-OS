@@ -285,7 +285,16 @@ export default function CRM() {
                 className="w-full pr-12 text-left"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-os-text text-[11px] leading-tight">{client.name}</span>
+                  <span className="font-bold text-os-text text-[11px] leading-tight flex items-center gap-2 min-w-0">
+                    <span className="w-6 h-6 rounded bg-os-dark text-white flex items-center justify-center overflow-hidden shrink-0 text-[10px] font-black">
+                      {client.avatarUrl ? (
+                        <img src={client.avatarUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        client.name.charAt(0)
+                      )}
+                    </span>
+                    <span className="truncate">{client.name}</span>
+                  </span>
                   <span className={cn(
                      "w-1.5 h-1.5 rounded-full shadow-sm",
                      client.status === 'active' ? "bg-green-500" : "bg-gray-300"
@@ -330,8 +339,12 @@ export default function CRM() {
             {/* Header */}
             <div className="p-6 border-b border-gray-100 flex items-start justify-between bg-white z-10">
               <div className="flex gap-4 w-full">
-                <div className="w-12 h-12 rounded border border-gray-100 bg-os-dark flex items-center justify-center text-white text-lg font-bold shadow-sm shrink-0">
-                  {selectedClient.name.charAt(0)}
+                <div className="w-12 h-12 rounded border border-gray-100 bg-os-dark flex items-center justify-center text-white text-lg font-bold shadow-sm shrink-0 overflow-hidden">
+                  {selectedClient.avatarUrl ? (
+                    <img src={selectedClient.avatarUrl} alt="Avatar do cliente" className="w-full h-full object-cover" />
+                  ) : (
+                    selectedClient.name.charAt(0)
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between w-full">

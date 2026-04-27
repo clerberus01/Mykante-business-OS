@@ -18,6 +18,7 @@ type ClientRecord = {
   contact_role: string | null;
   contact_email: string | null;
   contact_phone: string | null;
+  avatar_url: string | null;
   status: Client['status'];
   address_street: string | null;
   address_number: string | null;
@@ -88,6 +89,7 @@ const clientRecordSchema = z.object({
   contact_role: z.string().nullable(),
   contact_email: z.string().nullable(),
   contact_phone: z.string().nullable(),
+  avatar_url: z.string().nullable().optional(),
   status: z.enum(['active', 'inactive', 'archived', 'lead']),
   address_street: z.string().nullable(),
   address_number: z.string().nullable(),
@@ -158,6 +160,7 @@ function mapClientRecord(record: ClientRecord): Client {
     contactRole: record.contact_role ?? undefined,
     contactEmail: record.contact_email ?? undefined,
     contactPhone: record.contact_phone ?? undefined,
+    avatarUrl: record.avatar_url ?? undefined,
     status: record.status,
     address: {
       street: record.address_street ?? '',
@@ -225,6 +228,7 @@ function mapClientInput(client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>, 
     contact_role: client.contactRole ?? null,
     contact_email: client.contactEmail ?? null,
     contact_phone: client.contactPhone ?? null,
+    avatar_url: client.avatarUrl ?? null,
     status: client.status,
     address_street: client.address.street,
     address_number: client.address.number,
@@ -294,6 +298,7 @@ export class SupabaseClientRepository extends SupabaseRepository {
     if (data.contactRole !== undefined) payload.contact_role = data.contactRole ?? null;
     if (data.contactEmail !== undefined) payload.contact_email = data.contactEmail ?? null;
     if (data.contactPhone !== undefined) payload.contact_phone = data.contactPhone ?? null;
+    if (data.avatarUrl !== undefined) payload.avatar_url = data.avatarUrl ?? null;
     if (data.status !== undefined) payload.status = data.status;
     if (data.address !== undefined) {
       payload.address_street = data.address.street;

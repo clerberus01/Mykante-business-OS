@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { X, Loader2, User, Landmark, Info, Tag, MapPin, CreditCard, ChevronRight, ChevronLeft, AlertCircle } from 'lucide-react';
+import { X, Loader2, User, Landmark, Info, Tag, MapPin, CreditCard, ChevronRight, ChevronLeft, AlertCircle, Upload } from 'lucide-react';
 import { Client } from '../types';
 import { cn } from '../lib/utils';
+import { useAuth } from '../contexts/AuthContext';
+import { getSupabaseBrowserClient } from '../lib/supabase';
 
 interface ClientModalProps {
   onClose: () => void;
@@ -12,7 +14,10 @@ interface ClientModalProps {
 type TabType = 'registration' | 'financial' | 'context';
 
 export default function ClientModal({ onClose, onSave, initialData }: ClientModalProps) {
+  const { organization } = useAuth();
+  const supabase = getSupabaseBrowserClient();
   const [loading, setLoading] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('registration');
   const [formData, setFormData] = useState({
     personType: initialData?.personType || 'Física' as 'Física' | 'Jurídica',
@@ -25,6 +30,7 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
     contactRole: initialData?.contactRole || '',
     contactEmail: initialData?.contactEmail || '',
     contactPhone: initialData?.contactPhone || '',
+    avatarUrl: initialData?.avatarUrl || '',
     status: initialData?.status || 'lead' as Client['status'],
     address: {
       street: initialData?.address?.street || '',
@@ -66,6 +72,46 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
 
   const removeTag = (tag: string) => {
     setFormData({ ...formData, tags: formData.tags.filter(t => t !== tag) });
+  };
+
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) return;
+
+    if (!organization?.id) {
+      window.alert('Selecione uma organizacao antes de enviar a imagem do cliente.');
+      return;
+    }
+
+    setUploadingAvatar(true);
+
+    try {
+      const extension = file.name.split('.').pop()?.toLowerCase() || 'png';
+      const safeName =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const storagePath = `${organization.id}/${safeName}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from('client-avatars').upload(storagePath, file, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: file.type,
+      });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data } = supabase.storage.from('client-avatars').getPublicUrl(storagePath);
+      setFormData((current) => ({ ...current, avatarUrl: data.publicUrl }));
+    } catch (error) {
+      console.error('Client avatar upload failed:', error);
+      window.alert('Nao foi possivel enviar a imagem do cliente.');
+    } finally {
+      setUploadingAvatar(false);
+    }
   };
 
   const tabs: { id: TabType; label: string; icon: any }[] = [
@@ -113,6 +159,42 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
             {/* --- REGISTRATION SECTION --- */}
             {activeTab === 'registration' && (
               <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                <div className="flex items-center gap-4 p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <div className="w-16 h-16 rounded-lg bg-os-dark text-white flex items-center justify-center overflow-hidden shrink-0 text-xl font-black">
+                    {formData.avatarUrl ? (
+                      <img src={formData.avatarUrl} alt="Avatar do cliente" className="w-full h-full object-cover" />
+                    ) : (
+                      (formData.name || 'C').charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Imagem do Cliente</p>
+                    <div className="flex flex-wrap gap-2">
+                      <label className="px-3 py-2 bg-white border border-gray-200 rounded text-[10px] font-bold uppercase tracking-widest text-os-text hover:bg-gray-50 transition-all flex items-center gap-2 cursor-pointer">
+                        {uploadingAvatar ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                        Upload
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif"
+                          disabled={uploadingAvatar}
+                          onChange={(uploadEvent) => void handleAvatarUpload(uploadEvent)}
+                          className="hidden"
+                        />
+                      </label>
+                      {formData.avatarUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, avatarUrl: '' })}
+                          className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-red-500 transition-all"
+                        >
+                          Remover
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[9px] text-gray-400 mt-2 font-medium">PNG, JPG, WEBP ou GIF ate 5MB.</p>
+                  </div>
+                </div>
+
                 <div className="space-y-3">
                   <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
                     <User className="w-3 h-3 text-brand" /> Natureza do Registro
