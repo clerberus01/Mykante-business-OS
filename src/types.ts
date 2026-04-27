@@ -11,6 +11,7 @@ export interface Proposal {
   updatedAt: ISODateString;
   validUntil: ISODateString;
   description?: string;
+  publicToken?: string;
 }
 
 export interface Client {
@@ -45,6 +46,9 @@ export interface Client {
   tags: string[];
   attention: string;
   origin: string;
+  publicToken?: string;
+  publicStatusEnabled?: boolean;
+  publicStatusClosedAt?: ISODateString;
 
   createdAt: ISODateString;
   updatedAt: ISODateString;

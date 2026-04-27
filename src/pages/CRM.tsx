@@ -14,6 +14,8 @@ import {
   MessageSquare,
   Trash2,
   AlertCircle,
+  Link2,
+  Lock,
   MapPin,
   Landmark,
   Compass as Origin
@@ -173,6 +175,56 @@ export default function CRM() {
     }
   };
 
+  const copyProposalStatusLink = async (proposal: Proposal) => {
+    if (!proposal.publicToken) {
+      window.alert('Esta proposta ainda nao possui link publico. Atualize a proposta ou gere uma nova.');
+      return;
+    }
+
+    const publicUrl = `${window.location.origin}/proposal/${proposal.publicToken}`;
+
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      window.alert('Link de acompanhamento copiado.');
+    } catch {
+      window.prompt('Copie o link de acompanhamento:', publicUrl);
+    }
+  };
+
+  const copyClientStatusLink = async () => {
+    if (!selectedClient?.publicToken) {
+      window.alert('Este cliente ainda nao possui link de acompanhamento. Atualize o cadastro ou aplique a migration mais recente.');
+      return;
+    }
+
+    const publicUrl = `${window.location.origin}/status/${selectedClient.publicToken}`;
+
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      window.alert('Link de acompanhamento copiado.');
+    } catch {
+      window.prompt('Copie o link de acompanhamento:', publicUrl);
+    }
+  };
+
+  const closeClientStatusLink = async () => {
+    if (!selectedClient?.id) return;
+    if (!window.confirm('Encerrar o acompanhamento publico deste cliente? O link deixara de funcionar.')) {
+      return;
+    }
+
+    try {
+      await updateClient(selectedClient.id, {
+        publicStatusEnabled: false,
+        publicStatusClosedAt: new Date().toISOString(),
+      });
+      window.alert('Acompanhamento encerrado.');
+    } catch (error) {
+      console.error('CRM public status close failed:', error);
+      window.alert('Nao foi possivel encerrar o acompanhamento.');
+    }
+  };
+
   if (loadingClients) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -294,6 +346,24 @@ export default function CRM() {
                       </span>
                     </div>
                     <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => void copyClientStatusLink()}
+                        className="p-2 text-gray-400 hover:text-brand rounded hover:bg-gray-50 transition-all"
+                        title="Copiar link de acompanhamento"
+                      >
+                        <Link2 className="w-4 h-4" />
+                      </button>
+                      {selectedClient.publicStatusEnabled !== false && (
+                        <button
+                          type="button"
+                          onClick={() => void closeClientStatusLink()}
+                          className="p-2 text-gray-400 hover:text-red-500 rounded hover:bg-gray-50 transition-all"
+                          title="Encerrar acompanhamento"
+                        >
+                          <Lock className="w-4 h-4" />
+                        </button>
+                      )}
                       <button 
                         type="button"
                         onClick={() => { setEditingClient(selectedClient); setShowClientModal(true); }}
@@ -585,7 +655,14 @@ export default function CRM() {
                                       className="flex-1 py-2 bg-green-500 text-white rounded text-[9px] font-black uppercase tracking-widest hover:bg-green-600 transition-all shadow-sm shadow-green-200"
                                     >Aceitar</button>
                                   )}
-                                  <button type="button" className="flex-1 py-2 bg-gray-50 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-100 rounded">Visualizar</button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void copyProposalStatusLink(proposal)}
+                                    className="flex-1 py-2 bg-gray-50 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-100 rounded flex items-center justify-center gap-1"
+                                  >
+                                    <Link2 className="w-3 h-3" />
+                                    Link
+                                  </button>
                                </div>
                             </div>
                           ))}

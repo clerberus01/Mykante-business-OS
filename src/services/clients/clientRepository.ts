@@ -32,6 +32,9 @@ type ClientRecord = {
   tags: string[] | null;
   attention: string | null;
   origin: string | null;
+  public_token?: string | null;
+  public_status_enabled?: boolean | null;
+  public_status_closed_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -99,6 +102,9 @@ const clientRecordSchema = z.object({
   tags: z.array(z.string()).nullable(),
   attention: z.string().nullable(),
   origin: z.string().nullable(),
+  public_token: z.string().uuid().nullable().optional(),
+  public_status_enabled: z.boolean().nullable().optional(),
+  public_status_closed_at: z.string().nullable().optional(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -168,6 +174,9 @@ function mapClientRecord(record: ClientRecord): Client {
     tags: normalizeStringArray(record.tags),
     attention: record.attention ?? '',
     origin: record.origin ?? '',
+    publicToken: record.public_token ?? undefined,
+    publicStatusEnabled: record.public_status_enabled ?? undefined,
+    publicStatusClosedAt: record.public_status_closed_at ? toIsoString(record.public_status_closed_at) : undefined,
     createdAt: toIsoString(record.created_at),
     updatedAt: toIsoString(record.updated_at),
   };
@@ -301,6 +310,10 @@ export class SupabaseClientRepository extends SupabaseRepository {
     if (data.tags !== undefined) payload.tags = data.tags;
     if (data.attention !== undefined) payload.attention = data.attention;
     if (data.origin !== undefined) payload.origin = data.origin;
+    if (data.publicStatusEnabled !== undefined) payload.public_status_enabled = data.publicStatusEnabled;
+    if (data.publicStatusClosedAt !== undefined) {
+      payload.public_status_closed_at = data.publicStatusClosedAt ?? null;
+    }
 
     await this.unwrap(
       this.supabase

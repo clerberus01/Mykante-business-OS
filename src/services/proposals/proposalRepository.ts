@@ -13,6 +13,7 @@ type ProposalRecord = {
   status: Proposal['status'];
   description?: string | null;
   valid_until: string;
+  public_token?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -26,6 +27,7 @@ const proposalRecordSchema = z.object({
   status: z.enum(['draft', 'sent', 'accepted', 'rejected']),
   description: z.string().nullable(),
   valid_until: z.string(),
+  public_token: z.string().uuid().nullable().optional(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -41,6 +43,7 @@ function mapProposalRecord(record: ProposalRecord): Proposal {
     validUntil: toIsoString(record.valid_until),
     createdAt: toIsoString(record.created_at),
     updatedAt: toIsoString(record.updated_at),
+    publicToken: record.public_token ?? undefined,
   };
 }
 

@@ -22,6 +22,8 @@ const Documents = lazy(() => import('./pages/Documents'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Finance = lazy(() => import('./pages/Finance'));
 const Communications = lazy(() => import('./pages/Communications'));
+const ProposalStatus = lazy(() => import('./pages/public/ProposalStatus'));
+const ClientStatus = lazy(() => import('./pages/public/ClientStatus'));
 
 const tabRoutes: Record<string, string> = {
   dashboard: '/',
@@ -146,6 +148,14 @@ function SettingsRoute() {
   return <ProtectedShell><Settings /></ProtectedShell>;
 }
 
+function PublicProposalStatusRoute() {
+  return <ProposalStatus />;
+}
+
+function PublicClientStatusRoute() {
+  return <ClientStatus />;
+}
+
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
 });
@@ -198,6 +208,18 @@ const settingsRoute = createRoute({
   component: SettingsRoute,
 });
 
+const publicProposalStatusRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/proposal/$token',
+  component: PublicProposalStatusRoute,
+});
+
+const publicClientStatusRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/status/$token',
+  component: PublicClientStatusRoute,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   crmRoute,
@@ -207,6 +229,8 @@ const routeTree = rootRoute.addChildren([
   communicationsRoute,
   documentsRoute,
   settingsRoute,
+  publicProposalStatusRoute,
+  publicClientStatusRoute,
 ]);
 
 const router = createRouter({ routeTree });
