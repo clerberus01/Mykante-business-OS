@@ -4,6 +4,10 @@ import type { Client, CrmDeal, CrmPipelineStage, TimelineEvent } from '../../typ
 import { createClientRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
 
+function getQueryError(error: unknown, fallbackMessage: string) {
+  return error ? toDataLayerError(error, fallbackMessage) : null;
+}
+
 export function useSupabaseClients() {
   const { supabase, organizationId } = useRepositoryContext();
   const queryClient = useQueryClient();
@@ -69,17 +73,18 @@ export function useSupabaseClients() {
     },
   });
 
-  const clients = clientsQuery.error
-    ? []
-    : clientsQuery.data ?? [];
+  const clientsError = getQueryError(clientsQuery.error, 'Falha ao carregar clientes.');
+  const clients = clientsQuery.data ?? [];
 
-  if (clientsQuery.error) {
-    console.warn('Supabase clients load failed:', toDataLayerError(clientsQuery.error, 'Falha ao carregar clientes.'));
+  if (clientsError) {
+    console.warn('Supabase clients load failed:', clientsError);
   }
 
   return {
     clients,
     loading: clientsQuery.isLoading,
+    error: clientsError,
+    hasError: Boolean(clientsError),
     addClient: addClientMutation.mutateAsync,
     deleteClient: deleteClientMutation.mutateAsync,
     updateClient: (id: string, data: Partial<Client>) => updateClientMutation.mutateAsync({ id, data }),
@@ -141,13 +146,17 @@ export function useSupabaseEvents(clientId: string | null) {
     },
   });
 
-  if (eventsQuery.error) {
-    console.warn('Supabase client events load failed:', toDataLayerError(eventsQuery.error, 'Falha ao carregar eventos.'));
+  const eventsError = getQueryError(eventsQuery.error, 'Falha ao carregar eventos.');
+
+  if (eventsError) {
+    console.warn('Supabase client events load failed:', eventsError);
   }
 
   return {
-    events: eventsQuery.error ? [] : eventsQuery.data ?? [],
+    events: eventsQuery.data ?? [],
     loading: eventsQuery.isLoading,
+    error: eventsError,
+    hasError: Boolean(eventsError),
     addEvent: addEventMutation.mutateAsync,
     deleteEvent: deleteEventMutation.mutateAsync,
     refreshEvents: loadEvents,
@@ -201,18 +210,24 @@ export function useSupabasePipeline() {
     },
   });
 
-  if (stagesQuery.error) {
-    console.warn('Supabase pipeline stages load failed:', toDataLayerError(stagesQuery.error, 'Falha ao carregar estagios.'));
+  const stagesError = getQueryError(stagesQuery.error, 'Falha ao carregar estagios.');
+  const dealsError = getQueryError(dealsQuery.error, 'Falha ao carregar oportunidades.');
+  const pipelineError = stagesError ?? dealsError;
+
+  if (stagesError) {
+    console.warn('Supabase pipeline stages load failed:', stagesError);
   }
 
-  if (dealsQuery.error) {
-    console.warn('Supabase deals load failed:', toDataLayerError(dealsQuery.error, 'Falha ao carregar oportunidades.'));
+  if (dealsError) {
+    console.warn('Supabase deals load failed:', dealsError);
   }
 
   return {
-    stages: stagesQuery.error ? [] : stagesQuery.data ?? [],
-    deals: dealsQuery.error ? [] : dealsQuery.data ?? [],
+    stages: stagesQuery.data ?? [],
+    deals: dealsQuery.data ?? [],
     loading: stagesQuery.isLoading || dealsQuery.isLoading,
+    error: pipelineError,
+    hasError: Boolean(pipelineError),
     moveDeal: moveDealMutation.mutateAsync,
     movingDealId: moveDealMutation.variables?.deal.id ?? null,
   };

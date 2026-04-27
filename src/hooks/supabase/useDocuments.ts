@@ -6,6 +6,10 @@ import { useRepositoryContext } from './useRepositoryContext';
 
 const DOCUMENT_BUCKET = 'documents';
 
+function getQueryError(error: unknown, fallbackMessage: string) {
+  return error ? toDataLayerError(error, fallbackMessage) : null;
+}
+
 function guessFolder(file: File) {
   const mime = file.type.toLowerCase();
   const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
@@ -126,13 +130,13 @@ export function useSupabaseDocuments() {
     mutationFn: async (document: StoredDocument) => {
       if (!repository) return;
 
+      await repository.softDeleteDocument(document.id);
+
       const { error } = await supabase.storage.from(document.bucketId).remove([document.storagePath]);
 
       if (error) {
-        throw error;
+        console.warn('Supabase document storage cleanup failed:', error);
       }
-
-      await repository.softDeleteDocument(document.id);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: documentsQueryKey });
@@ -157,13 +161,17 @@ export function useSupabaseDocuments() {
     [supabase],
   );
 
-  if (documentsQuery.error) {
-    console.warn('Supabase documents load failed:', toDataLayerError(documentsQuery.error, 'Falha ao carregar documentos.'));
+  const documentsError = getQueryError(documentsQuery.error, 'Falha ao carregar documentos.');
+
+  if (documentsError) {
+    console.warn('Supabase documents load failed:', documentsError);
   }
 
   return {
-    documents: documentsQuery.error ? [] : documentsQuery.data ?? [],
+    documents: documentsQuery.data ?? [],
     loading: documentsQuery.isLoading,
+    error: documentsError,
+    hasError: Boolean(documentsError),
     uploadDocument,
     deleteDocument,
     downloadDocument,

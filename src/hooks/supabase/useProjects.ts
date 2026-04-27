@@ -4,6 +4,10 @@ import type { ActivityLog, Milestone, Project, ProjectTemplate, Task } from '../
 import { createProjectRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
 
+function getQueryError(error: unknown, fallbackMessage: string) {
+  return error ? toDataLayerError(error, fallbackMessage) : null;
+}
+
 export function useSupabaseProjects() {
   const { supabase, organizationId } = useRepositoryContext();
   const repository = useMemo(
@@ -83,14 +87,24 @@ export function useSupabaseProjects() {
     },
   });
 
-  if (projectsQuery.error) {
-    console.warn('Supabase projects load failed:', toDataLayerError(projectsQuery.error, 'Falha ao carregar projetos.'));
+  const projectsError = getQueryError(projectsQuery.error, 'Falha ao carregar projetos.');
+  const templatesError = getQueryError(templatesQuery.error, 'Falha ao carregar templates de projeto.');
+  const projectListError = projectsError ?? templatesError;
+
+  if (projectsError) {
+    console.warn('Supabase projects load failed:', projectsError);
+  }
+
+  if (templatesError) {
+    console.warn('Supabase project templates load failed:', templatesError);
   }
 
   return {
-    projects: projectsQuery.error ? [] : projectsQuery.data ?? [],
-    templates: templatesQuery.error ? [] as ProjectTemplate[] : templatesQuery.data ?? [],
+    projects: projectsQuery.data ?? [],
+    templates: templatesQuery.data ?? [] as ProjectTemplate[],
     loading: projectsQuery.isLoading,
+    error: projectListError,
+    hasError: Boolean(projectListError),
     addProject: (
       project: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'progress'>,
       templateId?: string,
@@ -167,16 +181,20 @@ export function useSupabaseMilestones(projectId: string | null) {
     },
   });
 
-  if (milestonesQuery.error) {
+  const milestonesError = getQueryError(milestonesQuery.error, 'Falha ao carregar etapas do projeto.');
+
+  if (milestonesError) {
     console.warn(
       'Supabase milestones load failed:',
-      toDataLayerError(milestonesQuery.error, 'Falha ao carregar etapas do projeto.'),
+      milestonesError,
     );
   }
 
   return {
-    milestones: milestonesQuery.error ? [] : milestonesQuery.data ?? [],
+    milestones: milestonesQuery.data ?? [],
     loading: milestonesQuery.isLoading,
+    error: milestonesError,
+    hasError: Boolean(milestonesError),
     addMilestone: addMilestoneMutation.mutateAsync,
     updateMilestone: (id: string, data: Partial<Milestone>) => updateMilestoneMutation.mutateAsync({ id, data }),
     requestMilestoneApproval: (id: string, approvalUrl: string) =>
@@ -324,13 +342,17 @@ export function useSupabaseTasks(projectId: string | null) {
     },
   });
 
-  if (tasksQuery.error) {
-    console.warn('Supabase tasks load failed:', toDataLayerError(tasksQuery.error, 'Falha ao carregar tarefas.'));
+  const tasksError = getQueryError(tasksQuery.error, 'Falha ao carregar tarefas.');
+
+  if (tasksError) {
+    console.warn('Supabase tasks load failed:', tasksError);
   }
 
   return {
-    tasks: tasksQuery.error ? [] : tasksQuery.data ?? [],
+    tasks: tasksQuery.data ?? [],
     loading: tasksQuery.isLoading,
+    error: tasksError,
+    hasError: Boolean(tasksError),
     addTask: addTaskMutation.mutateAsync,
     updateTask: (id: string, data: Partial<Task>) => updateTaskMutation.mutateAsync({ id, data }),
     deleteTask: deleteTaskMutation.mutateAsync,
@@ -395,15 +417,19 @@ export function useSupabaseProjectActivity(projectId: string | null) {
     },
   });
 
-  if (activityQuery.error) {
+  const activityError = getQueryError(activityQuery.error, 'Falha ao carregar a atividade do projeto.');
+
+  if (activityError) {
     console.warn(
       'Supabase project activity load failed:',
-      toDataLayerError(activityQuery.error, 'Falha ao carregar a atividade do projeto.'),
+      activityError,
     );
   }
 
   return {
-    activities: activityQuery.error ? [] : activityQuery.data ?? [],
+    activities: activityQuery.data ?? [],
+    error: activityError,
+    hasError: Boolean(activityError),
     addActivity: (action: string, details: string, userName?: string) =>
       addActivityMutation.mutateAsync({ action, details, userName }),
     refreshActivities: loadActivities,

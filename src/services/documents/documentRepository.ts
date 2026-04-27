@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { StoredDocument } from '../../types';
 import { SupabaseRepository } from '../shared/supabaseRepository';
-import { toUnixTimestamp } from '../shared/mappers';
+import { toIsoString } from '../shared/mappers';
 
 type DocumentRecord = {
   id: string;
@@ -35,8 +35,8 @@ function mapDocumentRecord(record: DocumentRecord): StoredDocument {
     clientId: record.client_id ?? undefined,
     projectId: record.project_id ?? undefined,
     proposalId: record.proposal_id ?? undefined,
-    createdAt: toUnixTimestamp(record.created_at),
-    updatedAt: toUnixTimestamp(record.updated_at),
+    createdAt: toIsoString(record.created_at),
+    updatedAt: toIsoString(record.updated_at),
   };
 }
 

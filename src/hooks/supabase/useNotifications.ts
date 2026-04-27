@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useRepositoryContext } from './useRepositoryContext';
 import {
   getOneSignalSnapshot,
@@ -154,6 +155,15 @@ export function useSupabaseNotifications() {
     }
   }, [currentUserId, organizationId, supabase]);
 
+  const notificationQuery = useQuery({
+    queryKey: ['notifications', organizationId, currentUserId],
+    queryFn: async () => {
+      await loadNotificationState();
+      return true;
+    },
+    enabled: Boolean(currentUserId),
+  });
+
   const upsertConsent = useCallback(
     async (channel: NotificationChannel, status: 'granted' | 'revoked') => {
       if (!organizationId) return;
@@ -220,10 +230,6 @@ export function useSupabaseNotifications() {
     },
     [currentUserId, organizationId, supabase],
   );
-
-  useEffect(() => {
-    void loadNotificationState();
-  }, [loadNotificationState]);
 
   useEffect(() => {
     let detach: (() => void) | null = null;
@@ -376,8 +382,10 @@ export function useSupabaseNotifications() {
     pushStatus,
     pushSubscription,
     summary,
-    loading,
+    loading: loading || notificationQuery.isLoading || notificationQuery.isFetching,
     setChannelEnabled,
-    refreshNotifications: loadNotificationState,
+    refreshNotifications: async () => {
+      await notificationQuery.refetch();
+    },
   };
 }

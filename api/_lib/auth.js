@@ -10,6 +10,16 @@ function getBearerToken(request) {
   return header.slice('Bearer '.length).trim();
 }
 
+function getRequestedOrganizationId(request) {
+  const header = request.headers['x-organization-id'] || request.headers['X-Organization-Id'];
+
+  if (typeof header === 'string' && header.trim()) {
+    return header.trim();
+  }
+
+  return null;
+}
+
 export async function getAuthenticatedContext(request) {
   const token = getBearerToken(request);
 
@@ -27,14 +37,22 @@ export async function getAuthenticatedContext(request) {
     throw new Error('Invalid Supabase session.');
   }
 
+  const requestedOrganizationId = getRequestedOrganizationId(request);
+  let membershipQuery = supabase
+    .from('organization_members')
+    .select('organization_id, role, status')
+    .eq('user_id', user.id)
+    .eq('status', 'active');
+
+  if (requestedOrganizationId) {
+    membershipQuery = membershipQuery.eq('organization_id', requestedOrganizationId);
+  } else {
+    membershipQuery = membershipQuery.order('created_at', { ascending: true });
+  }
+
   const [{ data: memberships, error: membershipError }, { data: profile, error: profileError }] =
     await Promise.all([
-      supabase
-        .from('organization_members')
-        .select('organization_id, role, status')
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .limit(1),
+      membershipQuery.limit(1),
       supabase.from('profiles').select('email, full_name').eq('id', user.id).maybeSingle(),
     ]);
 
@@ -49,7 +67,11 @@ export async function getAuthenticatedContext(request) {
   const membership = memberships?.[0];
 
   if (!membership) {
-    throw new Error('No active organization membership found.');
+    throw new Error(
+      requestedOrganizationId
+        ? 'No active membership found for the requested organization.'
+        : 'No active organization membership found.',
+    );
   }
 
   return {

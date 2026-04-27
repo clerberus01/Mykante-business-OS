@@ -4,6 +4,10 @@ import type { BankStatementLine, CostCenter, FinanceCategory, Transaction } from
 import { createTransactionRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
 
+function getQueryError(error: unknown, fallbackMessage: string) {
+  return error ? toDataLayerError(error, fallbackMessage) : null;
+}
+
 export function useSupabaseTransactions() {
   const { supabase, organizationId } = useRepositoryContext();
   const queryClient = useQueryClient();
@@ -112,19 +116,39 @@ export function useSupabaseTransactions() {
     },
   });
 
-  if (transactionsQuery.error) {
+  const transactionsError = getQueryError(transactionsQuery.error, 'Falha ao carregar lancamentos financeiros.');
+  const categoriesError = getQueryError(categoriesQuery.error, 'Falha ao carregar categorias financeiras.');
+  const costCentersError = getQueryError(costCentersQuery.error, 'Falha ao carregar centros de custo.');
+  const bankLinesError = getQueryError(bankLinesQuery.error, 'Falha ao carregar conciliacao bancaria.');
+  const financeError = transactionsError ?? categoriesError ?? costCentersError ?? bankLinesError;
+
+  if (transactionsError) {
     console.warn(
       'Supabase transactions load failed:',
-      toDataLayerError(transactionsQuery.error, 'Falha ao carregar lancamentos financeiros.'),
+      transactionsError,
     );
   }
 
+  if (categoriesError) {
+    console.warn('Supabase finance categories load failed:', categoriesError);
+  }
+
+  if (costCentersError) {
+    console.warn('Supabase cost centers load failed:', costCentersError);
+  }
+
+  if (bankLinesError) {
+    console.warn('Supabase bank statement lines load failed:', bankLinesError);
+  }
+
   return {
-    transactions: transactionsQuery.error ? [] : transactionsQuery.data ?? [],
-    categories: categoriesQuery.error ? [] : categoriesQuery.data ?? [],
-    costCenters: costCentersQuery.error ? [] : costCentersQuery.data ?? [],
-    bankStatementLines: bankLinesQuery.error ? [] : bankLinesQuery.data ?? [],
+    transactions: transactionsQuery.data ?? [],
+    categories: categoriesQuery.data ?? [],
+    costCenters: costCentersQuery.data ?? [],
+    bankStatementLines: bankLinesQuery.data ?? [],
     loading: transactionsQuery.isLoading,
+    error: financeError,
+    hasError: Boolean(financeError),
     addTransaction: addTransactionMutation.mutateAsync,
     updateTransaction: (id: string, data: Partial<Transaction>) => updateTransactionMutation.mutateAsync({ id, data }),
     createCategory: (name: string, type: FinanceCategory['type']) => createCategoryMutation.mutateAsync({ name, type }),

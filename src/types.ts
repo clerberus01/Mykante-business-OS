@@ -1,4 +1,5 @@
 export type EntityStatus = 'active' | 'inactive' | 'archived' | 'lead';
+export type ISODateString = string;
 
 export interface Proposal {
   id: string;
@@ -6,9 +7,9 @@ export interface Proposal {
   title: string;
   value: number;
   status: 'draft' | 'sent' | 'accepted' | 'rejected';
-  createdAt: number;
-  updatedAt: number;
-  validUntil: number;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+  validUntil: ISODateString;
   description?: string;
 }
 
@@ -45,8 +46,8 @@ export interface Client {
   attention: string;
   origin: string;
 
-  createdAt: number;
-  updatedAt: number;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
 }
 
 export type TimelineEventType = 'email' | 'whatsapp' | 'note' | 'file' | 'system';
@@ -58,7 +59,7 @@ export interface TimelineEvent {
   title: string;
   content: string;
   metadata?: Record<string, any>;
-  createdAt: number;
+  createdAt: ISODateString;
   createdBy: string;
 }
 
@@ -79,9 +80,9 @@ export interface CrmDeal {
   value: number;
   probability: number;
   status: 'open' | 'won' | 'lost';
-  expectedCloseAt?: number;
-  createdAt: number;
-  updatedAt: number;
+  expectedCloseAt?: ISODateString;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
 }
 
 export type ProjectStatus = 'draft' | 'ongoing' | 'paused' | 'completed' | 'cancelled';
@@ -93,14 +94,14 @@ export interface Project {
   clientId: string; 
   description: string;
   status: ProjectStatus;
-  startDate: number;
-  deadline: number;
+  startDate: ISODateString;
+  deadline: ISODateString;
   budget: number;
   paymentStatus: PaymentStatus;
   progress: number; // 0 to 100
   financialBalance?: number; // Added for transversal visibility
-  createdAt: number;
-  updatedAt: number;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
 }
 
 export interface ProjectTemplate {
@@ -109,7 +110,7 @@ export interface ProjectTemplate {
   description?: string;
   estimatedDays: number;
   defaultBudget?: number;
-  createdAt: number;
+  createdAt: ISODateString;
 }
 
 export interface Milestone {
@@ -120,7 +121,7 @@ export interface Milestone {
   status: 'pending' | 'completed';
   approvalStatus?: 'not_requested' | 'requested' | 'approved' | 'rejected';
   approvalUrl?: string;
-  createdAt: number;
+  createdAt: ISODateString;
 }
 
 export type TaskStatus = 'todo' | 'doing' | 'done';
@@ -141,9 +142,9 @@ export interface Task {
   activeTimeEntryId?: string;
   billableMinutes?: number;
   billedAmount?: number;
-  dueDate?: number;
-  createdAt: number;
-  updatedAt: number;
+  dueDate?: ISODateString;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
 }
 
 export interface ProjectTimeEntry {
@@ -151,14 +152,14 @@ export interface ProjectTimeEntry {
   projectId: string;
   taskId?: string;
   userId?: string;
-  startedAt: number;
-  stoppedAt?: number;
+  startedAt: ISODateString;
+  stoppedAt?: ISODateString;
   durationMinutes?: number;
   billable?: boolean;
   hourlyRate?: number;
   billedAmount?: number;
   note?: string;
-  createdAt: number;
+  createdAt: ISODateString;
 }
 
 export interface ActivityLog {
@@ -168,7 +169,7 @@ export interface ActivityLog {
   userName: string;
   action: string;
   details: string;
-  timestamp: number;
+  timestamp: ISODateString;
 }
 
 export type TransactionType = 'income' | 'expense';
@@ -180,8 +181,8 @@ export interface Transaction {
   type: TransactionType;
   amount: number;
   description: string;
-  date: number;
-  dueDate: number;
+  date: ISODateString;
+  dueDate: ISODateString;
   status: TransactionStatus;
   categoryId: string;
   costCenterId?: string;
@@ -195,7 +196,7 @@ export interface Transaction {
   paymentUrl?: string;
   providerPaymentId?: string;
   bankStatementLineId?: string;
-  createdAt: number;
+  createdAt: ISODateString;
 }
 
 export interface FinanceCategory {
@@ -215,7 +216,7 @@ export interface BankStatementLine {
   id: string;
   description: string;
   amount: number;
-  occurredAt: number;
+  occurredAt: ISODateString;
   matchedTransactionId?: string;
   matchConfidence?: number;
   status: 'unmatched' | 'matched' | 'ignored';
@@ -229,12 +230,12 @@ export interface Invoice {
   projectId?: string;
   number: string;
   amount: number;
-  dueDate: number;
+  dueDate: ISODateString;
   status: InvoiceStatus;
   items: InvoiceItem[];
   notes?: string;
-  createdAt: number;
-  updatedAt: number;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
 }
 
 export interface InvoiceItem {
@@ -258,8 +259,8 @@ export interface StoredDocument {
   clientId?: string;
   projectId?: string;
   proposalId?: string;
-  createdAt: number;
-  updatedAt: number;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
 }
 
 export interface WhatsappConversation {
@@ -270,9 +271,9 @@ export interface WhatsappConversation {
   status: 'open' | 'archived';
   unreadCount: number;
   lastMessageBody?: string;
-  lastMessageAt?: number;
-  createdAt: number;
-  updatedAt: number;
+  lastMessageAt?: ISODateString;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
 }
 
 export interface WhatsappMessage {
@@ -284,8 +285,8 @@ export interface WhatsappMessage {
   providerMessageId?: string;
   errorMessage?: string;
   sentBy?: string;
-  createdAt: number;
-  sentAt?: number;
-  deliveredAt?: number;
-  readAt?: number;
+  createdAt: ISODateString;
+  sentAt?: ISODateString;
+  deliveredAt?: ISODateString;
+  readAt?: ISODateString;
 }

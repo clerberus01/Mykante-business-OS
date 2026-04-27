@@ -11,7 +11,7 @@ function isValidSignature(request, rawBody) {
   const appSecret = process.env.WHATSAPP_APP_SECRET;
 
   if (!appSecret) {
-    return true;
+    return false;
   }
 
   const signature = request.headers['x-hub-signature-256'];
@@ -21,7 +21,14 @@ function isValidSignature(request, rawBody) {
   }
 
   const expected = `sha256=${crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex')}`;
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  const signatureBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+
+  if (signatureBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
 }
 
 async function readRawBody(request) {

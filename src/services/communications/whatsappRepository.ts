@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { WhatsappConversation, WhatsappMessage } from '../../types';
 import { SupabaseRepository } from '../shared/supabaseRepository';
-import { toUnixTimestamp } from '../shared/mappers';
+import { toIsoString } from '../shared/mappers';
 
 type ConversationRecord = {
   id: string;
@@ -40,9 +40,9 @@ function mapConversation(record: ConversationRecord): WhatsappConversation {
     status: record.status,
     unreadCount: record.unread_count,
     lastMessageBody: record.last_message_body ?? undefined,
-    lastMessageAt: record.last_message_at ? toUnixTimestamp(record.last_message_at) : undefined,
-    createdAt: toUnixTimestamp(record.created_at),
-    updatedAt: toUnixTimestamp(record.updated_at),
+    lastMessageAt: record.last_message_at ? toIsoString(record.last_message_at) : undefined,
+    createdAt: toIsoString(record.created_at),
+    updatedAt: toIsoString(record.updated_at),
   };
 }
 
@@ -56,10 +56,10 @@ function mapMessage(record: MessageRecord): WhatsappMessage {
     providerMessageId: record.provider_message_id ?? undefined,
     errorMessage: record.error_message ?? undefined,
     sentBy: record.sent_by ?? undefined,
-    createdAt: toUnixTimestamp(record.created_at),
-    sentAt: record.sent_at ? toUnixTimestamp(record.sent_at) : undefined,
-    deliveredAt: record.delivered_at ? toUnixTimestamp(record.delivered_at) : undefined,
-    readAt: record.read_at ? toUnixTimestamp(record.read_at) : undefined,
+    createdAt: toIsoString(record.created_at),
+    sentAt: record.sent_at ? toIsoString(record.sent_at) : undefined,
+    deliveredAt: record.delivered_at ? toIsoString(record.delivered_at) : undefined,
+    readAt: record.read_at ? toIsoString(record.read_at) : undefined,
   };
 }
 

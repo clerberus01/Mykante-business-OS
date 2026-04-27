@@ -4,6 +4,10 @@ import type { Proposal } from '../../types';
 import { createProposalRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
 
+function getQueryError(error: unknown, fallbackMessage: string) {
+  return error ? toDataLayerError(error, fallbackMessage) : null;
+}
+
 export function useSupabaseProposals() {
   const { supabase, organizationId } = useRepositoryContext();
   const queryClient = useQueryClient();
@@ -61,13 +65,17 @@ export function useSupabaseProposals() {
     },
   });
 
-  if (proposalsQuery.error) {
-    console.warn('Supabase proposals load failed:', toDataLayerError(proposalsQuery.error, 'Falha ao carregar propostas.'));
+  const proposalsError = getQueryError(proposalsQuery.error, 'Falha ao carregar propostas.');
+
+  if (proposalsError) {
+    console.warn('Supabase proposals load failed:', proposalsError);
   }
 
   return {
-    proposals: proposalsQuery.error ? [] : proposalsQuery.data ?? [],
+    proposals: proposalsQuery.data ?? [],
     loading: proposalsQuery.isLoading,
+    error: proposalsError,
+    hasError: Boolean(proposalsError),
     addProposal: addProposalMutation.mutateAsync,
     updateProposal: (id: string, data: Partial<Proposal>) => updateProposalMutation.mutateAsync({ id, data }),
     refreshProposals: loadProposals,

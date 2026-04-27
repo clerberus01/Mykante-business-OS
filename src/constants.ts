@@ -1,5 +1,8 @@
 import { Project, Task } from './types';
 
+const daysFromNow = (days: number) => new Date(Date.now() + 86400000 * days).toISOString();
+const nowIso = () => new Date().toISOString();
+
 export const mockProjects: Project[] = [
   {
     id: '1',
@@ -7,13 +10,13 @@ export const mockProjects: Project[] = [
     clientId: 'c1',
     description: 'Modernização completa da plataforma de vendas com foco em performance e UX/UI minimalista.',
     status: 'ongoing',
-    startDate: Date.now() - 86400000 * 10,
-    deadline: Date.now() + 86400000 * 30,
+    startDate: daysFromNow(-10),
+    deadline: daysFromNow(30),
     budget: 15000,
     paymentStatus: 'pending',
     progress: 35,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
   },
   {
     id: '2',
@@ -21,13 +24,13 @@ export const mockProjects: Project[] = [
     clientId: 'c2',
     description: 'Desenvolvimento de nova identidade visual corporativa, manual de marca e assets digitais.',
     status: 'draft',
-    startDate: Date.now() + 86400000 * 5,
-    deadline: Date.now() + 86400000 * 45,
+    startDate: daysFromNow(5),
+    deadline: daysFromNow(45),
     budget: 8500,
     paymentStatus: 'pending',
     progress: 0,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
   },
   {
     id: '3',
@@ -35,13 +38,13 @@ export const mockProjects: Project[] = [
     clientId: 'c3',
     description: 'Criação de aplicativo nativo para gestão de inventário em tempo real.',
     status: 'completed',
-    startDate: Date.now() - 86400000 * 30,
-    deadline: Date.now() - 86400000 * 1,
+    startDate: daysFromNow(-30),
+    deadline: daysFromNow(-1),
     budget: 22000,
     paymentStatus: 'paid',
     progress: 100,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
   }
 ];
 
@@ -56,9 +59,9 @@ export const mockTasks: Task[] = [
     priority: 'high',
     responsible: 'Clerberus',
     checklist: [{ id: '1', text: 'Tela de pagamento', completed: false }],
-    dueDate: Date.now() + 86400000 * 2,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    dueDate: daysFromNow(2),
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
   },
   {
     id: 't2',
@@ -70,8 +73,8 @@ export const mockTasks: Task[] = [
     priority: 'medium',
     responsible: 'João',
     checklist: [],
-    dueDate: Date.now() - 86400000 * 1,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    dueDate: daysFromNow(-1),
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
   }
 ];

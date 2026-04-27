@@ -39,7 +39,7 @@ export default async function handler(request, response) {
           env: 'missing',
           appUrl: publicAppUrl ? 'ok' : 'missing_or_invalid',
         },
-        missingEnv,
+        missingEnvCount: missingEnv.length,
         publicAppUrl,
         now: new Date().toISOString(),
       });
@@ -60,7 +60,7 @@ export default async function handler(request, response) {
         env: 'ok',
         appUrl: publicAppUrl ? 'ok' : 'missing_or_invalid',
       },
-      missingEnv,
+      missingEnvCount: missingEnv.length,
       publicAppUrl,
       now: new Date().toISOString(),
     });
@@ -69,7 +69,7 @@ export default async function handler(request, response) {
       success: false,
       runtime: 'vercel-nodejs',
       error: error instanceof Error ? error.message : 'Healthcheck failed.',
-      missingEnv: getMissingEnvKeys(),
+      missingEnvCount: getMissingEnvKeys().length,
       publicAppUrl: getPublicAppUrl(),
       now: new Date().toISOString(),
     });

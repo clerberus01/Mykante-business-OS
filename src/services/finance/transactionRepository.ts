@@ -58,8 +58,8 @@ function mapTransactionRecord(record: TransactionRecord): Transaction {
     type: record.type,
     amount: Number(record.amount),
     description: record.description,
-    date: toUnixTimestamp(record.date),
-    dueDate: toUnixTimestamp(record.due_date),
+    date: toIsoString(record.date),
+    dueDate: toIsoString(record.due_date),
     status: record.status,
     categoryId: record.category_id,
     costCenterId: record.cost_center_id ?? undefined,
@@ -73,13 +73,13 @@ function mapTransactionRecord(record: TransactionRecord): Transaction {
     paymentUrl: record.payment_url ?? undefined,
     providerPaymentId: record.provider_payment_id ?? undefined,
     bankStatementLineId: record.bank_statement_line_id ?? undefined,
-    createdAt: toUnixTimestamp(record.created_at),
+    createdAt: toIsoString(record.created_at),
   };
 }
 
-function scoreMatch(line: { description: string; amount: number; occurredAt: number }, transaction: Transaction) {
+function scoreMatch(line: { description: string; amount: number; occurredAt: string }, transaction: Transaction) {
   const amountScore = Math.abs(line.amount - transaction.amount) < 0.01 ? 60 : 0;
-  const days = Math.abs(line.occurredAt - transaction.dueDate) / 86400000;
+  const days = Math.abs(new Date(line.occurredAt).getTime() - new Date(transaction.dueDate).getTime()) / 86400000;
   const dateScore = days <= 1 ? 25 : days <= 3 ? 15 : 0;
   const descriptionScore = transaction.description
     .toLowerCase()
@@ -88,6 +88,10 @@ function scoreMatch(line: { description: string; amount: number; occurredAt: num
     .some((word) => line.description.toLowerCase().includes(word)) ? 15 : 0;
 
   return amountScore + dateScore + descriptionScore;
+}
+
+function optionalId(value: string | null | undefined) {
+  return value?.trim() ? value : null;
 }
 
 export class SupabaseTransactionRepository extends SupabaseRepository {
@@ -122,9 +126,9 @@ export class SupabaseTransactionRepository extends SupabaseRepository {
           due_date: toIsoString(transaction.dueDate),
           status: transaction.status,
           category_id: transaction.categoryId,
-          cost_center_id: transaction.costCenterId ?? null,
-          client_id: transaction.clientId ?? null,
-          project_id: transaction.projectId ?? null,
+          cost_center_id: optionalId(transaction.costCenterId),
+          client_id: optionalId(transaction.clientId),
+          project_id: optionalId(transaction.projectId),
           is_recurring: transaction.isRecurring ?? false,
           recurrence_interval: transaction.recurrenceInterval ?? null,
           attachment_url: transaction.attachmentUrl ?? null,
@@ -149,9 +153,9 @@ export class SupabaseTransactionRepository extends SupabaseRepository {
     if (data.dueDate !== undefined) payload.due_date = toIsoString(data.dueDate);
     if (data.status !== undefined) payload.status = data.status;
     if (data.categoryId !== undefined) payload.category_id = data.categoryId;
-    if (data.costCenterId !== undefined) payload.cost_center_id = data.costCenterId ?? null;
-    if (data.clientId !== undefined) payload.client_id = data.clientId ?? null;
-    if (data.projectId !== undefined) payload.project_id = data.projectId ?? null;
+    if (data.costCenterId !== undefined) payload.cost_center_id = optionalId(data.costCenterId);
+    if (data.clientId !== undefined) payload.client_id = optionalId(data.clientId);
+    if (data.projectId !== undefined) payload.project_id = optionalId(data.projectId);
     if (data.isRecurring !== undefined) payload.is_recurring = data.isRecurring;
     if (data.recurrenceInterval !== undefined) payload.recurrence_interval = data.recurrenceInterval ?? null;
     if (data.attachmentUrl !== undefined) payload.attachment_url = data.attachmentUrl ?? null;
@@ -283,7 +287,7 @@ export class SupabaseTransactionRepository extends SupabaseRepository {
         return {
           description: description || line,
           amount: Number.isFinite(parsedAmount) ? Math.abs(parsedAmount) : 0,
-          occurredAt: Number.isFinite(occurredAt) ? occurredAt : Date.now(),
+          occurredAt: Number.isFinite(occurredAt) ? new Date(occurredAt).toISOString() : new Date().toISOString(),
         };
       });
 
@@ -344,7 +348,7 @@ export class SupabaseTransactionRepository extends SupabaseRepository {
       id: row.id,
       description: row.description,
       amount: Number(row.amount),
-      occurredAt: toUnixTimestamp(row.occurred_at),
+      occurredAt: toIsoString(row.occurred_at),
       matchedTransactionId: row.matched_transaction_id ?? undefined,
       matchConfidence: row.match_confidence ?? undefined,
       status: row.status,

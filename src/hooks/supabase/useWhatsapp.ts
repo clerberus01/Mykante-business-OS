@@ -5,6 +5,10 @@ import { createWhatsappRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
 import { useAuth } from '../../contexts/AuthContext';
 
+function getQueryError(error: unknown, fallbackMessage: string) {
+  return error ? toDataLayerError(error, fallbackMessage) : null;
+}
+
 function normalizeWhatsappPhone(phone: string) {
   const digits = phone.replace(/\D/g, '');
 
@@ -140,6 +144,10 @@ export function useSupabaseWhatsapp() {
         throw new Error('Sessao invalida para envio de WhatsApp.');
       }
 
+      if (!organizationId) {
+        throw new Error('Organizacao invalida para envio de WhatsApp.');
+      }
+
       if (!trimmedBody) {
         throw new Error('Mensagem vazia.');
       }
@@ -152,6 +160,7 @@ export function useSupabaseWhatsapp() {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${session.access_token}`,
+            'X-Organization-Id': organizationId,
           },
           body: JSON.stringify({
             conversationId,
@@ -177,17 +186,21 @@ export function useSupabaseWhatsapp() {
     [conversationsQueryKey, loadMessages, organizationId, queryClient, session?.access_token],
   );
 
-  if (conversationsQuery.error) {
+  const conversationsError = getQueryError(conversationsQuery.error, 'Falha ao carregar WhatsApp.');
+
+  if (conversationsError) {
     console.warn(
       'Supabase WhatsApp conversations load failed:',
-      toDataLayerError(conversationsQuery.error, 'Falha ao carregar WhatsApp.'),
+      conversationsError,
     );
   }
 
   return {
-    conversations: conversationsQuery.error ? [] : conversationsQuery.data ?? [],
+    conversations: conversationsQuery.data ?? [],
     messagesByConversation,
     loading: conversationsQuery.isLoading,
+    error: conversationsError,
+    hasError: Boolean(conversationsError),
     sending,
     openClientConversation: openClientConversationMutation.mutateAsync,
     loadMessages,

@@ -1,16 +1,14 @@
-type PendingNavigationIntent =
-  | { kind: 'open-project'; projectId: string }
-  | { kind: 'create-project' }
-  | { kind: 'open-client'; clientId: string }
-  | { kind: 'create-client' }
-  | { kind: 'create-transaction'; timestamp?: number }
-  | { kind: 'upload-document' };
+import {
+  pendingNavigationIntentSchema,
+  type PendingNavigationIntent,
+} from '../schemas/navigation';
 
 const STORAGE_KEY = 'mbos:pending-navigation-intent';
 
 export function setPendingNavigationIntent(intent: PendingNavigationIntent) {
   if (typeof window === 'undefined') return;
-  window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(intent));
+  const parsedIntent = pendingNavigationIntentSchema.parse(intent);
+  window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(parsedIntent));
 }
 
 export function getPendingNavigationIntent() {
@@ -23,8 +21,9 @@ export function getPendingNavigationIntent() {
   }
 
   try {
-    return JSON.parse(rawValue) as PendingNavigationIntent;
+    return pendingNavigationIntentSchema.parse(JSON.parse(rawValue));
   } catch {
+    window.sessionStorage.removeItem(STORAGE_KEY);
     return null;
   }
 }

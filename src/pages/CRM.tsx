@@ -18,7 +18,7 @@ import {
   Landmark,
   Compass as Origin
 } from 'lucide-react';
-import { Client, TimelineEvent, TimelineEventType, Transaction, Proposal } from '../types';
+import { Client, CrmDeal, TimelineEvent, TimelineEventType, Transaction, Proposal } from '../types';
 import Timeline from '../components/Timeline';
 import ClientModal from '../components/ClientModal';
 import { cn, formatDate, formatCurrency } from '../lib/utils';
@@ -31,6 +31,7 @@ import {
 } from '../hooks/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { clearPendingNavigationIntent, getPendingNavigationIntent } from '../lib/navigation';
+import { filterByClientId } from './crmFilters';
 
 export default function CRM() {
   const { clients, loading: loadingClients, addClient, deleteClient, updateClient } = useClients();
@@ -58,9 +59,11 @@ export default function CRM() {
   );
 
   const selectedClient = clients.find(c => c.id === selectedClientId) || filteredClients[0];
-  const clientTransactions = transactions.filter(t => t.clientId === selectedClientId);
+  const selectedClientScopedId = selectedClient?.id ?? selectedClientId;
+  const clientTransactions: Transaction[] = filterByClientId<Transaction>(transactions, selectedClientScopedId);
   const clientBalance = clientTransactions.reduce((acc, t) => t.type === 'income' ? acc + t.amount : acc - t.amount, 0);
-  const clientProposals = proposals.filter(p => p.clientId === selectedClientId);
+  const clientProposals: Proposal[] = filterByClientId<Proposal>(proposals, selectedClientScopedId);
+  const clientDeals: CrmDeal[] = filterByClientId<CrmDeal>(deals, selectedClientScopedId);
   const clientsById = React.useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
   
   // Set initial selected client if none selected
@@ -359,7 +362,7 @@ export default function CRM() {
                     "px-4 py-3 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all",
                     activeTab === 'pipeline' ? "border-brand text-brand" : "border-transparent text-gray-400 hover:text-os-text"
                   )}
-                 >Pipeline ({deals.length})</button>
+                 >Pipeline ({clientDeals.length})</button>
                  <button 
                   type="button"
                   onClick={() => setActiveTab('proposals')}
@@ -487,11 +490,11 @@ export default function CRM() {
                       <div className="min-w-[900px]">
                         <div className="mb-8 border-b border-gray-100 pb-4 flex items-center justify-between">
                           <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">Pipeline Comercial</h3>
-                          <span className="text-[10px] font-mono text-gray-300">{deals.length} OPORTUNIDADES_ABERTAS</span>
+                          <span className="text-[10px] font-mono text-gray-300">{clientDeals.length} OPORTUNIDADES_ABERTAS</span>
                         </div>
                         <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.max(stages.length, 1)}, minmax(180px, 1fr))` }}>
                           {stages.map((stage, stageIndex) => {
-                            const stageDeals = deals.filter((deal) => deal.stageId === stage.id);
+                            const stageDeals = clientDeals.filter((deal) => deal.stageId === stage.id);
 
                             return (
                               <div key={stage.id} className="bg-white border border-gray-100 rounded shadow-sm min-h-[360px] flex flex-col">

@@ -38,9 +38,9 @@ function mapProposalRecord(record: ProposalRecord): Proposal {
     value: Number(record.value),
     status: record.status,
     description: record.description ?? undefined,
-    validUntil: toUnixTimestamp(record.valid_until),
-    createdAt: toUnixTimestamp(record.created_at),
-    updatedAt: toUnixTimestamp(record.updated_at),
+    validUntil: toIsoString(record.valid_until),
+    createdAt: toIsoString(record.created_at),
+    updatedAt: toIsoString(record.updated_at),
   };
 }
 

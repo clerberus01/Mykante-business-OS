@@ -7,7 +7,7 @@ import {
   createTransactionRepository,
   toDataLayerError,
 } from '../../services';
-import { toUnixTimestamp } from '../../services/shared/mappers';
+import { toIsoString } from '../../services/shared/mappers';
 import { useRepositoryContext } from './useRepositoryContext';
 
 type TaskRecord = {
@@ -43,9 +43,9 @@ function mapTaskRecord(record: TaskRecord): Task {
     priority: record.priority,
     responsible: record.responsible,
     checklist: Array.isArray(record.checklist) ? record.checklist : [],
-    dueDate: record.due_date ? toUnixTimestamp(record.due_date) : undefined,
-    createdAt: toUnixTimestamp(record.created_at),
-    updatedAt: toUnixTimestamp(record.updated_at),
+    dueDate: record.due_date ? toIsoString(record.due_date) : undefined,
+    createdAt: toIsoString(record.created_at),
+    updatedAt: toIsoString(record.updated_at),
   };
 }
 
@@ -70,14 +70,14 @@ function compareTasks(a: Task, b: Task) {
     return bWeight - aWeight;
   }
 
-  const aDue = a.dueDate ?? Number.MAX_SAFE_INTEGER;
-  const bDue = b.dueDate ?? Number.MAX_SAFE_INTEGER;
+  const aDue = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+  const bDue = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
 
   if (aDue !== bDue) {
     return aDue - bDue;
   }
 
-  return b.updatedAt - a.updatedAt;
+  return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
 }
 
 function compareProjects(a: Project, b: Project) {
@@ -96,7 +96,7 @@ function compareProjects(a: Project, b: Project) {
     return bWeight - aWeight;
   }
 
-  return b.updatedAt - a.updatedAt;
+  return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
 }
 
 export function useSupabaseDashboard() {
@@ -199,21 +199,21 @@ export function useSupabaseDashboard() {
         (transaction) =>
           transaction.type === 'income' &&
           transaction.status === 'liquidated' &&
-          transaction.date >= start &&
-          transaction.date < end,
+          new Date(transaction.date).getTime() >= start &&
+          new Date(transaction.date).getTime() < end,
       )
       .reduce((total, transaction) => total + transaction.amount, 0);
 
     const activeClients = clients.filter((client) => client.status === 'active').length;
     const activeProjects = projects.filter((project) => ['ongoing', 'paused'].includes(project.status)).length;
     const overdueProjects = projects.filter(
-      (project) => ['ongoing', 'paused'].includes(project.status) && project.deadline < now,
+      (project) => ['ongoing', 'paused'].includes(project.status) && new Date(project.deadline).getTime() < now,
     ).length;
     const pendingTasks = tasks.filter((task) => task.status !== 'done').length;
     const urgentTasks = tasks.filter((task) => {
       if (task.status === 'done') return false;
       if (task.priority === 'urgent') return true;
-      return typeof task.dueDate === 'number' && task.dueDate < now;
+      return Boolean(task.dueDate && new Date(task.dueDate).getTime() < now);
     }).length;
 
     return {

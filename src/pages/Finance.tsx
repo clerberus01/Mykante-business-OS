@@ -114,7 +114,7 @@ export default function Finance() {
 
   const getStatusColor = (tx: Transaction) => {
     if (tx.status === 'liquidated') return 'text-green-500';
-    const isOverdue = tx.dueDate < Date.now();
+    const isOverdue = new Date(tx.dueDate).getTime() < Date.now();
     const isToday = new Date(tx.dueDate).toDateString() === new Date().toDateString();
     
     if (isOverdue) return 'text-red-500';
@@ -451,7 +451,7 @@ export default function Finance() {
                                 <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
                                 <span className="text-[10px] font-black text-amber-600 uppercase">Atenção</span>
                              </div>
-                             <p className="text-[10px] font-medium text-amber-800 leading-tight">Você tem {filteredTransactions.filter(t => t.status === 'pending' && t.dueDate < Date.now()).length} cobranças em atraso totalizando {formatCurrency(filteredTransactions.filter(t => t.status === 'pending' && t.dueDate < Date.now()).reduce((a,b)=>a+b.amount,0))}.</p>
+                      <p className="text-[10px] font-medium text-amber-800 leading-tight">Você tem {filteredTransactions.filter(t => t.status === 'pending' && new Date(t.dueDate).getTime() < Date.now()).length} cobranças em atraso totalizando {formatCurrency(filteredTransactions.filter(t => t.status === 'pending' && new Date(t.dueDate).getTime() < Date.now()).reduce((a,b)=>a+b.amount,0))}.</p>
                           </div>
                        </div>
                     </div>
@@ -569,7 +569,7 @@ export default function Finance() {
                             <div className={cn(
                               "w-10 h-10 rounded-full flex items-center justify-center",
                               tx.status === 'liquidated' ? "bg-green-50 text-green-600" : 
-                              tx.dueDate < Date.now() ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600"
+                              new Date(tx.dueDate).getTime() < Date.now() ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600"
                             )}>
                                {tx.status === 'liquidated' ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
                             </div>
@@ -589,7 +589,7 @@ export default function Finance() {
                                   {tx.type === 'income' ? '+' : '-'} {formatCurrency(tx.amount)}
                                </p>
                                <span className={cn("text-[9px] font-black uppercase tracking-widest", getStatusColor(tx))}>
-                                  {tx.status === 'liquidated' ? 'LIQUIDADO' : tx.dueDate < Date.now() ? 'ATRASADO' : 'PENDENTE'}
+                                  {tx.status === 'liquidated' ? 'LIQUIDADO' : new Date(tx.dueDate).getTime() < Date.now() ? 'ATRASADO' : 'PENDENTE'}
                                </span>
                             </div>
                             <div className="flex gap-2">

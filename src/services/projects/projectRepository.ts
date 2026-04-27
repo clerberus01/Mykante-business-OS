@@ -114,14 +114,14 @@ function mapProjectRecord(record: ProjectRecord): Project {
     clientId: record.client_id,
     description: record.description ?? '',
     status: record.status,
-    startDate: toUnixTimestamp(record.start_date),
-    deadline: toUnixTimestamp(record.deadline),
+    startDate: toIsoString(record.start_date),
+    deadline: toIsoString(record.deadline),
     budget: Number(record.budget ?? 0),
     paymentStatus: record.payment_status,
     progress: record.progress ?? 0,
     financialBalance: record.financial_balance ?? undefined,
-    createdAt: toUnixTimestamp(record.created_at),
-    updatedAt: toUnixTimestamp(record.updated_at),
+    createdAt: toIsoString(record.created_at),
+    updatedAt: toIsoString(record.updated_at),
   };
 }
 
@@ -134,7 +134,7 @@ function mapMilestoneRecord(record: MilestoneRecord): Milestone {
     status: record.status,
     approvalStatus: record.approval_status ?? 'not_requested',
     approvalUrl: record.approval_url ?? undefined,
-    createdAt: toUnixTimestamp(record.created_at),
+    createdAt: toIsoString(record.created_at),
   };
 }
 
@@ -185,9 +185,9 @@ function mapTaskRecord(
     billableMinutes,
     billedAmount,
     activeTimeEntryId: activeTimeEntry?.id,
-    dueDate: record.due_date ? toUnixTimestamp(record.due_date) : undefined,
-    createdAt: toUnixTimestamp(record.created_at),
-    updatedAt: toUnixTimestamp(record.updated_at),
+    dueDate: record.due_date ? toIsoString(record.due_date) : undefined,
+    createdAt: toIsoString(record.created_at),
+    updatedAt: toIsoString(record.updated_at),
   };
 }
 
@@ -198,7 +198,7 @@ function mapProjectTemplateRecord(record: ProjectTemplateRecord): ProjectTemplat
     description: record.description ?? undefined,
     estimatedDays: record.estimated_days ?? 30,
     defaultBudget: record.default_budget ? Number(record.default_budget) : undefined,
-    createdAt: toUnixTimestamp(record.created_at),
+    createdAt: toIsoString(record.created_at),
   };
 }
 
@@ -210,7 +210,7 @@ function mapActivityRecord(record: ActivityRecord): ActivityLog {
     userName: record.user_name,
     action: record.action,
     details: record.details,
-    timestamp: toUnixTimestamp(record.timestamp),
+    timestamp: toIsoString(record.timestamp),
   };
 }
 

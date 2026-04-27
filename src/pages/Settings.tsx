@@ -29,7 +29,7 @@ type TestChannel = 'email' | 'push' | null;
 type PrivacyAction = 'export' | 'deletion' | 'anonymization' | null;
 type SettingsSection = 'profile' | 'notifications' | 'security' | 'database' | 'api';
 
-async function sendTestNotification(accessToken: string, channel: 'email' | 'push') {
+async function sendTestNotification(accessToken: string, organizationId: string | null, channel: 'email' | 'push') {
   const endpoint = channel === 'email' ? '/api/notifications/email' : '/api/notifications/push';
 
   const response = await fetch(endpoint, {
@@ -37,6 +37,7 @@ async function sendTestNotification(accessToken: string, channel: 'email' | 'pus
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
+      ...(organizationId ? { 'X-Organization-Id': organizationId } : {}),
     },
     body: JSON.stringify({
       test: true,
@@ -330,7 +331,7 @@ export default function Settings() {
     setTestingChannel(channel);
 
     try {
-      const result = await sendTestNotification(session.access_token, channel);
+      const result = await sendTestNotification(session.access_token, organization?.id ?? null, channel);
       if (channel === 'email') {
         window.alert(
           result.message ||
@@ -361,6 +362,7 @@ export default function Settings() {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
+          ...(organization?.id ? { 'X-Organization-Id': organization.id } : {}),
         },
       });
 

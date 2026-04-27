@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Client, CrmDeal, CrmPipelineStage, TimelineEvent } from '../../types';
 import { SupabaseRepository } from '../shared/supabaseRepository';
 import { DataLayerError } from '../shared/dataErrors';
-import { normalizeStringArray, toUnixTimestamp } from '../shared/mappers';
+import { normalizeStringArray, toIsoString } from '../shared/mappers';
 
 type ClientRecord = {
   id: string;
@@ -168,8 +168,8 @@ function mapClientRecord(record: ClientRecord): Client {
     tags: normalizeStringArray(record.tags),
     attention: record.attention ?? '',
     origin: record.origin ?? '',
-    createdAt: toUnixTimestamp(record.created_at),
-    updatedAt: toUnixTimestamp(record.updated_at),
+    createdAt: toIsoString(record.created_at),
+    updatedAt: toIsoString(record.updated_at),
   };
 }
 
@@ -193,9 +193,9 @@ function mapDealRecord(record: DealRecord): CrmDeal {
     value: record.value ?? 0,
     probability: record.probability,
     status: record.status,
-    expectedCloseAt: record.expected_close_at ? toUnixTimestamp(record.expected_close_at) : undefined,
-    createdAt: toUnixTimestamp(record.created_at),
-    updatedAt: toUnixTimestamp(record.updated_at),
+    expectedCloseAt: record.expected_close_at ? toIsoString(record.expected_close_at) : undefined,
+    createdAt: toIsoString(record.created_at),
+    updatedAt: toIsoString(record.updated_at),
   };
 }
 
@@ -241,7 +241,7 @@ function mapTimelineEventRecord(record: ClientEventRecord): TimelineEvent {
     title: record.title,
     content: record.content,
     metadata: record.metadata ?? undefined,
-    createdAt: toUnixTimestamp(record.created_at),
+    createdAt: toIsoString(record.created_at),
     createdBy: record.created_by ?? 'system',
   };
 }

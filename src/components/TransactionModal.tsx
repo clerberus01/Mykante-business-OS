@@ -13,6 +13,7 @@ import {
 import { CostCenter, FinanceCategory, Transaction, TransactionType, TransactionStatus } from '../types';
 import { useSupabaseClients as useClients, useSupabaseProjects as useProjects } from '../hooks/supabase';
 import { cn } from '../lib/utils';
+import { transactionFormSchema } from '../schemas';
 
 interface TransactionModalProps {
   onClose: () => void;
@@ -56,15 +57,16 @@ export default function TransactionModal({ onClose, onSave, initialData, default
     e.preventDefault();
     setLoading(true);
     try {
+      const parsedForm = transactionFormSchema.parse(formData);
       await onSave({
-        ...formData,
-        amount: Number(formData.amount),
-        date: new Date(formData.date).getTime(),
-        dueDate: new Date(formData.dueDate).getTime(),
+        ...parsedForm,
+        date: new Date(parsedForm.date).toISOString(),
+        dueDate: new Date(parsedForm.dueDate).toISOString(),
       });
       onClose();
     } catch (error) {
       console.error('Save error', error);
+      window.alert(error instanceof Error ? error.message : 'Nao foi possivel salvar o lancamento.');
     } finally {
       setLoading(false);
     }

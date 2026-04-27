@@ -3,6 +3,7 @@ import { X, Loader2, Calendar, Target, DollarSign, Users, Info } from 'lucide-re
 import { Project, ProjectStatus, PaymentStatus, ProjectTemplate } from '../types';
 import { cn } from '../lib/utils';
 import { useSupabaseClients as useClients } from '../hooks/supabase';
+import { projectFormSchema } from '../schemas';
 
 interface ProjectModalProps {
   onClose: () => void;
@@ -37,16 +38,17 @@ export default function ProjectModal({ onClose, onSave, initialData, onDelete, t
     
     setLoading(true);
     try {
-      const { templateId, ...projectData } = formData;
+      const parsedForm = projectFormSchema.parse(formData);
+      const { templateId, ...projectData } = parsedForm;
       await onSave({
         ...projectData,
-        startDate: new Date(formData.startDate).getTime(),
-        deadline: new Date(formData.deadline).getTime(),
-        budget: Number(formData.budget),
+        startDate: new Date(parsedForm.startDate).toISOString(),
+        deadline: new Date(parsedForm.deadline).toISOString(),
       }, templateId || undefined);
       onClose();
     } catch (error) {
       console.error('Error saving project:', error);
+      window.alert(error instanceof Error ? error.message : 'Nao foi possivel salvar o projeto.');
     } finally {
       setLoading(false);
     }

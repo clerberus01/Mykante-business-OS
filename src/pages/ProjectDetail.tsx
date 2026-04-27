@@ -80,8 +80,10 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
   const projectedRevenue = Math.round((project.budget * progress) / 100);
   const totalIncome = projectTransactions.filter(t => t.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
   const revenueGap = Math.max(0, projectedRevenue - totalIncome);
-  const daysTotal = Math.max(1, Math.ceil((project.deadline - project.startDate) / 86400000));
-  const daysElapsed = Math.min(daysTotal, Math.max(0, Math.ceil((Date.now() - project.startDate) / 86400000)));
+  const startTimestamp = new Date(project.startDate).getTime();
+  const deadlineTimestamp = new Date(project.deadline).getTime();
+  const daysTotal = Math.max(1, Math.ceil((deadlineTimestamp - startTimestamp) / 86400000));
+  const daysElapsed = Math.min(daysTotal, Math.max(0, Math.ceil((Date.now() - startTimestamp) / 86400000)));
   const expectedRemaining = Math.max(0, tasks.length - Math.round((tasks.length * daysElapsed) / daysTotal));
   const actualRemaining = tasks.filter(task => task.status !== 'done').length;
   type TeamAllocation = { name: string; minutes: number; tasks: number; active: number; urgent: number };

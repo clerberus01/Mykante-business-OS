@@ -2,6 +2,11 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { getSupabaseBrowserClient } from '../lib/supabase';
 import { logoutOneSignalUser, syncOneSignalUser } from '../lib/onesignal';
+import {
+  assertAuthAttemptAllowed,
+  recordAuthAttemptFailure,
+  recordAuthAttemptSuccess,
+} from '../lib/authRateLimit';
 
 type AuthRole = 'owner' | 'admin' | 'manager' | 'operator';
 
@@ -198,14 +203,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    assertAuthAttemptAllowed('sign-in', normalizedEmail);
+
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: normalizedEmail,
       password,
     });
 
     if (error) {
+      recordAuthAttemptFailure('sign-in', normalizedEmail);
       throw error;
     }
+
+    recordAuthAttemptSuccess('sign-in', normalizedEmail);
   };
 
   const createInitialAdminAccess = async ({
@@ -217,14 +229,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string;
     password: string;
   }) => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    assertAuthAttemptAllowed('initial-admin', normalizedEmail);
+
     const canCreate = await loadBootstrapStatus();
 
     if (!canCreate) {
+      recordAuthAttemptFailure('initial-admin', normalizedEmail);
       throw new Error('O acesso ADM inicial já foi configurado.');
     }
 
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: normalizedEmail,
       password,
       options: {
         data: {
@@ -236,8 +253,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     if (error) {
+      recordAuthAttemptFailure('initial-admin', normalizedEmail);
       throw error;
     }
+
+    recordAuthAttemptSuccess('initial-admin', normalizedEmail);
 
     return {
       requiresEmailConfirmation: !data.session,
