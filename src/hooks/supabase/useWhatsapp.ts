@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Client, WhatsappConversation, WhatsappMessage } from '../../types';
+import { useCallback, useMemo } from 'react';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { Client, WhatsappMessage } from '../../types';
 import { createWhatsappRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { queryKeys } from './queryKeys';
 
 function getQueryError(error: unknown, fallbackMessage: string) {
   return error ? toDataLayerError(error, fallbackMessage) : null;
@@ -35,9 +36,7 @@ export function useSupabaseWhatsapp() {
     () => (organizationId ? createWhatsappRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const [messagesByConversation, setMessagesByConversation] = useState<Record<string, WhatsappMessage[]>>({});
-  const [sending, setSending] = useState(false);
-  const conversationsQueryKey = ['whatsapp', organizationId, 'conversations'] as const;
+  const conversationsQueryKey = useMemo(() => queryKeys.whatsapp.conversations(organizationId), [organizationId]);
   const conversationsQuery = useQuery({
     queryKey: conversationsQueryKey,
     enabled: Boolean(repository),
@@ -69,37 +68,40 @@ export function useSupabaseWhatsapp() {
 
       try {
         const messages = await queryClient.fetchQuery({
-          queryKey: ['whatsapp', organizationId, 'messages', conversationId],
+          queryKey: queryKeys.whatsapp.messages(organizationId, conversationId),
           queryFn: () => repository.listMessages(conversationId),
         });
-        setMessagesByConversation((current) => ({
-          ...current,
-          [conversationId]: messages,
-        }));
+        return messages;
       } catch (error) {
         console.warn('Supabase WhatsApp messages load failed:', toDataLayerError(error, 'Falha ao carregar mensagens.'));
+        return [];
       }
     },
     [organizationId, queryClient, repository],
   );
 
-  useEffect(() => {
-    for (const conversation of conversationsQuery.data ?? []) {
-      const cachedMessages = queryClient.getQueryData<WhatsappMessage[]>([
-        'whatsapp',
-        organizationId,
-        'messages',
-        conversation.id,
-      ]);
+  const messageQueries = useQueries({
+    queries: (conversationsQuery.data ?? []).map((conversation) => ({
+      queryKey: queryKeys.whatsapp.messages(organizationId, conversation.id),
+      enabled: false,
+      queryFn: async () => {
+        if (!repository) return [];
+        return repository.listMessages(conversation.id);
+      },
+      initialData:
+        queryClient.getQueryData<WhatsappMessage[]>(queryKeys.whatsapp.messages(organizationId, conversation.id)) ?? [],
+    })),
+  });
 
-      if (cachedMessages) {
-        setMessagesByConversation((current) => ({
-          ...current,
-          [conversation.id]: cachedMessages,
-        }));
-      }
-    }
-  }, [conversationsQuery.data, organizationId, queryClient]);
+  const messagesByConversation = useMemo(() => {
+    const nextMessages: Record<string, WhatsappMessage[]> = {};
+
+    (conversationsQuery.data ?? []).forEach((conversation, index) => {
+      nextMessages[conversation.id] = (messageQueries[index]?.data as WhatsappMessage[] | undefined) ?? [];
+    });
+
+    return nextMessages;
+  }, [conversationsQuery.data, messageQueries]);
 
   const openClientConversationMutation = useMutation({
     mutationFn: async (client: Client) => {
@@ -136,8 +138,8 @@ export function useSupabaseWhatsapp() {
     },
   });
 
-  const sendMessage = useCallback(
-    async (conversationId: string, body: string) => {
+  const sendMessageMutation = useMutation({
+    mutationFn: async ({ conversationId, body }: { conversationId: string; body: string }) => {
       const trimmedBody = body.trim();
 
       if (!session?.access_token) {
@@ -152,38 +154,39 @@ export function useSupabaseWhatsapp() {
         throw new Error('Mensagem vazia.');
       }
 
-      setSending(true);
+      const response = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+          'X-Organization-Id': organizationId,
+        },
+        body: JSON.stringify({
+          conversationId,
+          body: trimmedBody,
+        }),
+      });
 
-      try {
-        const response = await fetch('/api/whatsapp/send', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-            'X-Organization-Id': organizationId,
-          },
-          body: JSON.stringify({
-            conversationId,
-            body: trimmedBody,
-          }),
-        });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
 
-        const payload = (await response.json().catch(() => ({}))) as { error?: string };
-
-        if (!response.ok) {
-          throw new Error(payload.error || 'Falha ao enviar WhatsApp.');
-        }
-
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: conversationsQueryKey }),
-          queryClient.invalidateQueries({ queryKey: ['whatsapp', organizationId, 'messages', conversationId] }),
-        ]);
-        await loadMessages(conversationId);
-      } finally {
-        setSending(false);
+      if (!response.ok) {
+        throw new Error(payload.error || 'Falha ao enviar WhatsApp.');
       }
+
+      return conversationId;
     },
-    [conversationsQueryKey, loadMessages, organizationId, queryClient, session?.access_token],
+    onSuccess: async (conversationId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: conversationsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.whatsapp.messages(organizationId, conversationId) }),
+      ]);
+      await loadMessages(conversationId);
+    },
+  });
+
+  const sendMessage = useCallback(
+    (conversationId: string, body: string) => sendMessageMutation.mutateAsync({ conversationId, body }),
+    [sendMessageMutation],
   );
 
   const conversationsError = getQueryError(conversationsQuery.error, 'Falha ao carregar WhatsApp.');
@@ -201,7 +204,7 @@ export function useSupabaseWhatsapp() {
     loading: conversationsQuery.isLoading,
     error: conversationsError,
     hasError: Boolean(conversationsError),
-    sending,
+    sending: sendMessageMutation.isPending,
     openClientConversation: openClientConversationMutation.mutateAsync,
     loadMessages,
     markConversationRead: markConversationReadMutation.mutateAsync,

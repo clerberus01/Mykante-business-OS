@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { X, Loader2, User, Landmark, Info, Tag, MapPin, CreditCard, ChevronRight, ChevronLeft, AlertCircle, Upload } from 'lucide-react';
 import { Client } from '../types';
 import { cn } from '../lib/utils';
-import { useAuth } from '../contexts/AuthContext';
-import { getSupabaseBrowserClient } from '../lib/supabase';
+import { useClientAvatarUpload } from '../hooks/supabase';
 
 interface ClientModalProps {
   onClose: () => void;
@@ -14,10 +13,8 @@ interface ClientModalProps {
 type TabType = 'registration' | 'financial' | 'context';
 
 export default function ClientModal({ onClose, onSave, initialData }: ClientModalProps) {
-  const { organization } = useAuth();
-  const supabase = getSupabaseBrowserClient();
+  const { uploadClientAvatar, uploadingAvatar } = useClientAvatarUpload();
   const [loading, setLoading] = useState(false);
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('registration');
   const [formData, setFormData] = useState({
     personType: initialData?.personType || 'Física' as 'Física' | 'Jurídica',
@@ -80,37 +77,12 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
 
     if (!file) return;
 
-    if (!organization?.id) {
-      window.alert('Selecione uma organizacao antes de enviar a imagem do cliente.');
-      return;
-    }
-
-    setUploadingAvatar(true);
-
     try {
-      const extension = file.name.split('.').pop()?.toLowerCase() || 'png';
-      const safeName =
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const storagePath = `${organization.id}/${safeName}.${extension}`;
-      const { error: uploadError } = await supabase.storage.from('client-avatars').upload(storagePath, file, {
-        cacheControl: '3600',
-        upsert: true,
-        contentType: file.type,
-      });
-
-      if (uploadError) {
-        throw uploadError;
-      }
-
-      const { data } = supabase.storage.from('client-avatars').getPublicUrl(storagePath);
-      setFormData((current) => ({ ...current, avatarUrl: data.publicUrl }));
+      const publicUrl = await uploadClientAvatar(file);
+      setFormData((current) => ({ ...current, avatarUrl: publicUrl }));
     } catch (error) {
       console.error('Client avatar upload failed:', error);
-      window.alert('Nao foi possivel enviar a imagem do cliente.');
-    } finally {
-      setUploadingAvatar(false);
+      window.alert(error instanceof Error ? error.message : 'Nao foi possivel enviar a imagem do cliente.');
     }
   };
 

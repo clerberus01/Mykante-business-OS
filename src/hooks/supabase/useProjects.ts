@@ -1,8 +1,9 @@
 import { useCallback, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ActivityLog, Milestone, Project, ProjectTemplate, Task } from '../../types';
+import type { Milestone, Project, ProjectTemplate, Task } from '../../types';
 import { createProjectRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
+import { queryKeys } from './queryKeys';
 
 function getQueryError(error: unknown, fallbackMessage: string) {
   return error ? toDataLayerError(error, fallbackMessage) : null;
@@ -15,7 +16,7 @@ export function useSupabaseProjects() {
     [organizationId, supabase],
   );
   const queryClient = useQueryClient();
-  const projectsQueryKey = ['projects', organizationId] as const;
+  const projectsQueryKey = useMemo(() => queryKeys.projects.root(organizationId), [organizationId]);
   const projectsQuery = useQuery({
     queryKey: projectsQueryKey,
     enabled: Boolean(repository),
@@ -41,7 +42,7 @@ export function useSupabaseProjects() {
     }
   }, [projectsQueryKey, queryClient, repository]);
 
-  const templatesQueryKey = ['projects', organizationId, 'templates'] as const;
+  const templatesQueryKey = useMemo(() => queryKeys.projects.templates(organizationId), [organizationId]);
   const templatesQuery = useQuery({
     queryKey: templatesQueryKey,
     enabled: Boolean(repository),
@@ -122,7 +123,10 @@ export function useSupabaseMilestones(projectId: string | null) {
     [organizationId, supabase],
   );
   const queryClient = useQueryClient();
-  const milestonesQueryKey = ['projects', organizationId, 'milestones', projectId] as const;
+  const milestonesQueryKey = useMemo(
+    () => queryKeys.projects.milestones(organizationId, projectId),
+    [organizationId, projectId],
+  );
   const milestonesQuery = useQuery({
     queryKey: milestonesQueryKey,
     enabled: Boolean(repository && projectId),
@@ -210,7 +214,10 @@ export function useSupabaseTasks(projectId: string | null) {
     [organizationId, supabase],
   );
   const queryClient = useQueryClient();
-  const tasksQueryKey = ['projects', organizationId, 'tasks', projectId, currentUserId] as const;
+  const tasksQueryKey = useMemo(
+    () => queryKeys.projects.tasks(organizationId, projectId, currentUserId),
+    [currentUserId, organizationId, projectId],
+  );
   const tasksQuery = useQuery({
     queryKey: tasksQueryKey,
     enabled: Boolean(repository && projectId),
@@ -248,7 +255,7 @@ export function useSupabaseTasks(projectId: string | null) {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
-        queryClient.invalidateQueries({ queryKey: ['projects', organizationId] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.projects.root(organizationId) }),
       ]);
       await queryClient.refetchQueries({ queryKey: tasksQueryKey });
     },
@@ -262,7 +269,7 @@ export function useSupabaseTasks(projectId: string | null) {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
-        queryClient.invalidateQueries({ queryKey: ['projects', organizationId] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.projects.root(organizationId) }),
       ]);
     },
   });
@@ -290,7 +297,7 @@ export function useSupabaseTasks(projectId: string | null) {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
-        queryClient.invalidateQueries({ queryKey: ['projects', organizationId] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.projects.root(organizationId) }),
       ]);
       await queryClient.refetchQueries({ queryKey: tasksQueryKey });
     },
@@ -314,7 +321,7 @@ export function useSupabaseTasks(projectId: string | null) {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
-        queryClient.invalidateQueries({ queryKey: ['projects', organizationId] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.projects.root(organizationId) }),
       ]);
     },
   });
@@ -337,7 +344,7 @@ export function useSupabaseTasks(projectId: string | null) {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
-        queryClient.invalidateQueries({ queryKey: ['crm', organizationId, 'transactions'] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.crm.transactions(organizationId) }),
       ]);
     },
   });
@@ -372,7 +379,10 @@ export function useSupabaseProjectActivity(projectId: string | null) {
     [organizationId, supabase],
   );
   const queryClient = useQueryClient();
-  const activityQueryKey = ['projects', organizationId, 'activity', projectId] as const;
+  const activityQueryKey = useMemo(
+    () => queryKeys.projects.activity(organizationId, projectId),
+    [organizationId, projectId],
+  );
   const activityQuery = useQuery({
     queryKey: activityQueryKey,
     enabled: Boolean(repository && projectId),

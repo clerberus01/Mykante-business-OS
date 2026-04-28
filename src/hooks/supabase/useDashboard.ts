@@ -9,6 +9,7 @@ import {
 } from '../../services';
 import { toIsoString } from '../../services/shared/mappers';
 import { useRepositoryContext } from './useRepositoryContext';
+import { queryKeys } from './queryKeys';
 
 type TaskRecord = {
   id: string;
@@ -114,7 +115,7 @@ export function useSupabaseDashboard() {
     () => (organizationId ? createTransactionRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const dashboardQueryKey = ['dashboard', organizationId] as const;
+  const dashboardQueryKey = useMemo(() => queryKeys.dashboard.root(organizationId), [organizationId]);
 
   const fetchDashboard = useCallback(async (): Promise<DashboardData> => {
     if (!organizationId || !clientRepository || !projectRepository || !transactionRepository) {
@@ -179,10 +180,10 @@ export function useSupabaseDashboard() {
     queryFn: fetchDashboard,
   });
   const dashboardData = dashboardQuery.error ? undefined : dashboardQuery.data;
-  const clients = dashboardData?.clients ?? [];
-  const projects = dashboardData?.projects ?? [];
-  const transactions = dashboardData?.transactions ?? [];
-  const tasks = dashboardData?.tasks ?? [];
+  const clients = useMemo(() => dashboardData?.clients ?? [], [dashboardData?.clients]);
+  const projects = useMemo(() => dashboardData?.projects ?? [], [dashboardData?.projects]);
+  const transactions = useMemo(() => dashboardData?.transactions ?? [], [dashboardData?.transactions]);
+  const tasks = useMemo(() => dashboardData?.tasks ?? [], [dashboardData?.tasks]);
 
   if (dashboardQuery.error) {
     console.warn(

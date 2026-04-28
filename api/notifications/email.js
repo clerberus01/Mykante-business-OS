@@ -1,11 +1,12 @@
 import { Resend } from 'resend';
-import { getAuthenticatedContext, sendJson } from '../_lib/auth.js';
+import { sendJson } from '../_lib/auth.js';
+import { withApiMiddleware } from '../_lib/middleware.js';
 import { readJsonBody } from '../_lib/request.js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'Mykante OS <onboarding@resend.dev>';
 
-export default async function handler(request, response) {
+async function handler(request, response, authContext) {
   if (request.method !== 'POST') {
     return sendJson(response, 405, { error: 'Method not allowed.' });
   }
@@ -15,7 +16,7 @@ export default async function handler(request, response) {
 
   try {
     await readJsonBody(request);
-    const { supabase, user, profile, organizationId } = await getAuthenticatedContext(request);
+    const { supabase, user, profile, organizationId } = authContext;
     adminClient = supabase;
     const userEmail = profile?.email || user.email;
 
@@ -86,3 +87,8 @@ export default async function handler(request, response) {
     });
   }
 }
+
+export default withApiMiddleware(handler, {
+  auth: true,
+  rateLimit: { keyPrefix: 'notifications:email', limit: 30, windowMs: 60_000 },
+});

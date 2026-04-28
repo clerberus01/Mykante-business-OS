@@ -17,46 +17,14 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { useSupabaseClients, useSupabaseProjects, useSupabaseTransactions } from '../hooks/supabase';
-import { useRepositoryContext } from '../hooks/supabase/useRepositoryContext';
-
-type CalendarEventType =
-  | 'meeting'
-  | 'review'
-  | 'deadline'
-  | 'technical_visit'
-  | 'client_call'
-  | 'time_block'
-  | 'travel'
-  | 'day_off'
-  | 'maintenance';
-
-type ManualCalendarEvent = {
-  id: string;
-  title: string;
-  description?: string;
-  eventType: CalendarEventType;
-  startsAt: number;
-  endsAt: number;
-  recurrenceRule: 'none' | 'weekly' | 'monthly';
-  recurrenceUntil?: number;
-  clientId?: string;
-  projectId?: string;
-  location?: string;
-  meetingUrl?: string;
-  status: 'scheduled' | 'confirmed' | 'cancelled' | 'completed';
-  attendees: CalendarAttendee[];
-};
-
-type CalendarAttendee = {
-  id: string;
-  eventId: string;
-  attendeeType: 'internal' | 'client' | 'external';
-  name: string;
-  email?: string;
-  phoneE164?: string;
-  responseStatus: 'pending' | 'confirmed' | 'declined';
-};
+import {
+  useSupabaseCalendar,
+  useSupabaseClients,
+  useSupabaseProjects,
+  useSupabaseTransactions,
+  type CalendarEventType,
+  type ManualCalendarEvent,
+} from '../hooks/supabase';
 
 type CalendarEvent = {
   id: string;
@@ -70,40 +38,6 @@ type CalendarEvent = {
   projectId?: string;
   target: 'project' | 'finance' | 'manual';
   manual?: ManualCalendarEvent;
-};
-
-type TaskRow = {
-  id: string;
-  project_id: string;
-  title: string;
-  status: 'todo' | 'doing' | 'done';
-  due_date: string | null;
-};
-
-type CalendarEventRecord = {
-  id: string;
-  title: string;
-  description: string | null;
-  event_type: CalendarEventType;
-  starts_at: string;
-  ends_at: string;
-  recurrence_rule: 'none' | 'weekly' | 'monthly' | null;
-  recurrence_until: string | null;
-  client_id: string | null;
-  project_id: string | null;
-  location: string | null;
-  meeting_url: string | null;
-  status: ManualCalendarEvent['status'];
-};
-
-type CalendarAttendeeRecord = {
-  id: string;
-  event_id: string;
-  attendee_type: CalendarAttendee['attendeeType'];
-  name: string;
-  email: string | null;
-  phone_e164: string | null;
-  response_status: CalendarAttendee['responseStatus'];
 };
 
 function startOfDayTimestamp(value: number) {
@@ -212,18 +146,21 @@ export default function Calendar({ onOpenProject, onOpenFinance, onCreateTransac
   const { projects, loading: loadingProjects } = useSupabaseProjects();
   const { transactions, loading: loadingTransactions } = useSupabaseTransactions();
   const { clients } = useSupabaseClients();
-  const { supabase, organizationId, currentUserId } = useRepositoryContext();
+  const {
+    taskRows,
+    manualEvents,
+    loading: loadingCalendar,
+    savingEvent,
+    saveManualEvent: persistManualEvent,
+    createBookingLink: persistBookingLink,
+    connectExternalCalendar: persistExternalCalendar,
+  } = useSupabaseCalendar();
   const [currentMonth, setCurrentMonth] = React.useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
-  const [taskRows, setTaskRows] = React.useState<TaskRow[]>([]);
-  const [manualEvents, setManualEvents] = React.useState<ManualCalendarEvent[]>([]);
-  const [loadingTasks, setLoadingTasks] = React.useState(Boolean(organizationId));
-  const [loadingManualEvents, setLoadingManualEvents] = React.useState(Boolean(organizationId));
   const [showEventModal, setShowEventModal] = React.useState(false);
   const [selectedEvent, setSelectedEvent] = React.useState<ManualCalendarEvent | null>(null);
-  const [savingEvent, setSavingEvent] = React.useState(false);
   const [bookingLink, setBookingLink] = React.useState('');
   const today = React.useMemo(() => startOfDayTimestamp(Date.now()), []);
   const now = Date.now();
@@ -248,84 +185,6 @@ export default function Calendar({ onOpenProject, onOpenFinance, onCreateTransac
       attendees: '',
     };
   });
-
-  const loadCalendarData = React.useCallback(async () => {
-    if (!organizationId) {
-      setTaskRows([]);
-      setManualEvents([]);
-      setLoadingTasks(false);
-      setLoadingManualEvents(false);
-      return;
-    }
-
-    setLoadingTasks(true);
-    setLoadingManualEvents(true);
-
-    try {
-      const [taskResult, eventResult, attendeeResult] = await Promise.all([
-        supabase
-          .from('tasks')
-          .select('id, project_id, title, status, due_date')
-          .eq('organization_id', organizationId)
-          .not('due_date', 'is', null)
-          .order('due_date', { ascending: true }),
-        supabase
-          .from('calendar_events')
-          .select('id, title, description, event_type, starts_at, ends_at, recurrence_rule, recurrence_until, client_id, project_id, location, meeting_url, status')
-          .eq('organization_id', organizationId)
-          .order('starts_at', { ascending: true }),
-        supabase
-          .from('calendar_event_attendees')
-          .select('id, event_id, attendee_type, name, email, phone_e164, response_status')
-          .eq('organization_id', organizationId),
-      ]);
-
-      if (taskResult.error) throw taskResult.error;
-      setTaskRows((taskResult.data as TaskRow[] | null) ?? []);
-
-      if (eventResult.error) {
-        console.warn('Supabase manual calendar events load failed:', eventResult.error);
-        setManualEvents([]);
-      } else {
-        const attendees = ((attendeeResult.data as CalendarAttendeeRecord[] | null) ?? []).map((attendee) => ({
-          id: attendee.id,
-          eventId: attendee.event_id,
-          attendeeType: attendee.attendee_type,
-          name: attendee.name,
-          email: attendee.email ?? undefined,
-          phoneE164: attendee.phone_e164 ?? undefined,
-          responseStatus: attendee.response_status,
-        }));
-
-        setManualEvents(((eventResult.data as CalendarEventRecord[] | null) ?? []).map((event) => ({
-          id: event.id,
-          title: event.title,
-          description: event.description ?? undefined,
-          eventType: event.event_type,
-          startsAt: new Date(event.starts_at).getTime(),
-          endsAt: new Date(event.ends_at).getTime(),
-          recurrenceRule: event.recurrence_rule ?? 'none',
-          recurrenceUntil: event.recurrence_until ? new Date(event.recurrence_until).getTime() : undefined,
-          clientId: event.client_id ?? undefined,
-          projectId: event.project_id ?? undefined,
-          location: event.location ?? undefined,
-          meetingUrl: event.meeting_url ?? undefined,
-          status: event.status,
-          attendees: attendees.filter((attendee) => attendee.eventId === event.id),
-        })));
-      }
-    } catch (error) {
-      console.warn('Supabase calendar load failed:', error);
-      setTaskRows([]);
-    } finally {
-      setLoadingTasks(false);
-      setLoadingManualEvents(false);
-    }
-  }, [organizationId, supabase]);
-
-  React.useEffect(() => {
-    void loadCalendarData();
-  }, [loadCalendarData]);
 
   const projectMap = React.useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
   const clientMap = React.useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
@@ -376,40 +235,7 @@ export default function Calendar({ onOpenProject, onOpenFinance, onCreateTransac
   const saveManualEvent = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!organizationId) return;
-
-    setSavingEvent(true);
-
     try {
-      const payload = {
-        organization_id: organizationId,
-        title: eventForm.title,
-        description: eventForm.description || null,
-        event_type: eventForm.eventType,
-        starts_at: new Date(eventForm.startsAt).toISOString(),
-        ends_at: new Date(eventForm.endsAt).toISOString(),
-        recurrence_rule: eventForm.recurrenceRule,
-        recurrence_until: eventForm.recurrenceUntil ? new Date(eventForm.recurrenceUntil).toISOString() : null,
-        client_id: eventForm.clientId || null,
-        project_id: eventForm.projectId || null,
-        location: eventForm.location || null,
-        meeting_url: eventForm.meetingUrl || null,
-        status: 'scheduled',
-        created_by: currentUserId,
-      };
-      const result = selectedEvent
-        ? await supabase
-            .from('calendar_events')
-            .update(payload)
-            .eq('organization_id', organizationId)
-            .eq('id', selectedEvent.id)
-            .select('id')
-            .single()
-        : await supabase.from('calendar_events').insert(payload).select('id').single();
-
-      if (result.error) throw result.error;
-
-      const eventId = result.data.id as string;
       const attendees = eventForm.attendees
         .split('\n')
         .map((line) => line.trim())
@@ -417,52 +243,45 @@ export default function Calendar({ onOpenProject, onOpenFinance, onCreateTransac
         .map((line) => {
           const [name = '', email = '', phone = ''] = line.split('|').map((part) => part.trim());
           return {
-            organization_id: organizationId,
-            event_id: eventId,
-            attendee_type: email.includes('@mykante') ? 'internal' : 'client',
+            attendeeType: email.includes('@mykante') ? 'internal' as const : 'client' as const,
             name,
             email: email || null,
-            phone_e164: normalizeWhatsappPhone(phone) ? `+${normalizeWhatsappPhone(phone)}` : null,
+            phoneE164: normalizeWhatsappPhone(phone) ? `+${normalizeWhatsappPhone(phone)}` : null,
           };
         });
 
-      if (selectedEvent) {
-        await supabase.from('calendar_event_attendees').delete().eq('organization_id', organizationId).eq('event_id', eventId);
-      }
-
-      if (attendees.length > 0) {
-        const attendeeResult = await supabase.from('calendar_event_attendees').insert(attendees).select('id');
-        if (attendeeResult.error) throw attendeeResult.error;
-      }
+      await persistManualEvent({
+        id: selectedEvent?.id,
+        title: eventForm.title,
+        description: eventForm.description || null,
+        eventType: eventForm.eventType,
+        startsAt: new Date(eventForm.startsAt).toISOString(),
+        endsAt: new Date(eventForm.endsAt).toISOString(),
+        recurrenceRule: eventForm.recurrenceRule,
+        recurrenceUntil: eventForm.recurrenceUntil ? new Date(eventForm.recurrenceUntil).toISOString() : null,
+        clientId: eventForm.clientId || null,
+        projectId: eventForm.projectId || null,
+        location: eventForm.location || null,
+        meetingUrl: eventForm.meetingUrl || null,
+        attendees,
+      });
 
       setShowEventModal(false);
-      await loadCalendarData();
     } catch (error) {
       console.error('Calendar event save failed:', error);
       window.alert('Nao foi possivel salvar o evento do calendario. Verifique se a migration do calendario foi aplicada.');
-    } finally {
-      setSavingEvent(false);
     }
   };
 
   const createBookingLink = async () => {
-    if (!organizationId) return;
-
     const token = crypto.randomUUID().slice(0, 8);
     const title = window.prompt('Titulo do link de agendamento', 'Agendar call com cliente')?.trim();
 
     if (!title) return;
 
-    const { error } = await supabase.from('calendar_booking_links').insert({
-      organization_id: organizationId,
-      token,
-      title,
-      duration_minutes: 60,
-      event_type: 'client_call',
-      created_by: currentUserId,
-    });
-
-    if (error) {
+    try {
+      await persistBookingLink({ token, title });
+    } catch (error) {
       console.error('Booking link creation failed:', error);
       window.alert('Nao foi possivel criar o link de agendamento.');
       return;
@@ -495,15 +314,7 @@ export default function Calendar({ onOpenProject, onOpenFinance, onCreateTransac
   };
 
   const connectExternalCalendar = async (provider: 'google' | 'outlook') => {
-    if (!organizationId) return;
-
-    await supabase.from('calendar_external_sync_accounts').insert({
-      organization_id: organizationId,
-      provider,
-      status: 'pending_oauth',
-      webhook_status: 'not_configured',
-      created_by: currentUserId,
-    });
+    await persistExternalCalendar(provider);
 
     window.alert(`${provider === 'google' ? 'Google Calendar' : 'Outlook'} registrado como pendente de OAuth. Configure client_id/client_secret e webhook no backend.`);
   };
@@ -576,7 +387,7 @@ export default function Calendar({ onOpenProject, onOpenFinance, onCreateTransac
       });
 
     return nextEvents.sort((left, right) => left.timestamp - right.timestamp);
-  }, [clientMap, currentMonth, manualEvents, projectMap, projects, taskRows, transactions]);
+  }, [currentMonth, manualEvents, projectMap, projects, taskRows, transactions]);
 
   const monthDays = React.useMemo(() => getCalendarGrid(currentMonth), [currentMonth]);
 
@@ -601,7 +412,7 @@ export default function Calendar({ onOpenProject, onOpenFinance, onCreateTransac
   const weeklyScheduledHours = weeklyManualEvents.reduce((total, event) => total + Math.max(0, event.endsAt - event.startsAt) / 3600000, 0);
   const teamOccupancy = Math.min(100, Math.round((weeklyScheduledHours / Math.max(1, 40 * Math.max(1, new Set(weeklyManualEvents.flatMap((event) => event.attendees.map((attendee) => attendee.name))).size))) * 100));
   const recurringLateCount = manualEvents.filter((event) => event.recurrenceRule !== 'none' && event.status !== 'completed' && event.endsAt < now).length;
-  const loading = loadingProjects || loadingTransactions || loadingTasks || loadingManualEvents;
+  const loading = loadingProjects || loadingTransactions || loadingCalendar;
 
   const handleOpenEvent = React.useCallback(
     (event: CalendarEvent) => {

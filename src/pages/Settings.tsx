@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import {
   User,
   Bell,
@@ -22,8 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { cn } from '../lib/utils';
-import { useSupabaseNotifications, useSupabasePrivacy } from '../hooks/supabase';
-import { getSupabaseBrowserClient } from '../lib/supabase';
+import { useSupabaseNotifications, useSupabasePrivacy, useSupabaseSettings } from '../hooks/supabase';
 
 type TestChannel = 'email' | 'push' | null;
 type PrivacyAction = 'export' | 'deletion' | 'anonymization' | null;
@@ -92,20 +91,26 @@ export default function Settings() {
   const { user, signOut, session, organization, role, isAdmin, refreshAuth } = useAuth();
   const { preferences, pushStatus, summary, loading, setChannelEnabled } = useSupabaseNotifications();
   const { requests, retentionPolicies, organizationPrivacy, createDataRequest, refreshPrivacy } = useSupabasePrivacy();
-  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const {
+    mfaFactorCount,
+    securityLoading,
+    savingProfile,
+    uploadingAvatar,
+    saveProfile,
+    uploadProfileAvatar,
+    loadMfaStatus,
+    requestPasswordReset,
+    checkApiHealth,
+  } = useSupabaseSettings();
 
   const [activeSection, setActiveSection] = useState<SettingsSection>('profile');
   const [savingChannel, setSavingChannel] = useState<'email' | 'push' | 'whatsapp' | null>(null);
   const [testingChannel, setTestingChannel] = useState<TestChannel>(null);
   const [privacyAction, setPrivacyAction] = useState<PrivacyAction>(null);
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [fullName, setFullName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [organizationName, setOrganizationName] = useState('');
   const [lgpdContactEmail, setLgpdContactEmail] = useState('');
-  const [mfaFactorCount, setMfaFactorCount] = useState<number | null>(null);
-  const [securityLoading, setSecurityLoading] = useState(false);
   const [apiHealth, setApiHealth] = useState<'idle' | 'checking' | 'ok' | 'error'>('idle');
   const [apiHealthMessage, setApiHealthMessage] = useState('');
 
@@ -127,72 +132,24 @@ export default function Settings() {
     setLgpdContactEmail(organizationPrivacy?.lgpdContactEmail || '');
   }, [organization?.name, organizationPrivacy?.lgpdContactEmail, organizationPrivacy?.name]);
 
-  const loadMfaStatus = async () => {
-    setSecurityLoading(true);
-
-    try {
-      const { data, error } = await supabase.auth.mfa.listFactors();
-
-      if (error) {
-        throw error;
-      }
-
-      setMfaFactorCount(data.all?.filter((factor) => factor.status === 'verified').length ?? 0);
-    } catch (error) {
-      console.warn('MFA status load failed:', error);
-      setMfaFactorCount(null);
-    } finally {
-      setSecurityLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (activeSection === 'security') {
       void loadMfaStatus();
     }
-  }, [activeSection]);
+  }, [activeSection, loadMfaStatus]);
 
   const handleSaveProfile = async () => {
     if (!user) return;
 
-    setSavingProfile(true);
-
     try {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          full_name: fullName.trim() || null,
-          avatar_url: avatarUrl.trim() || null,
-        })
-        .eq('id', user.id);
-
-      if (profileError) {
-        throw profileError;
-      }
-
+      await saveProfile({ fullName, avatarUrl, organizationName, lgpdContactEmail });
       if (organization?.id && isAdmin) {
-        const { error: organizationError } = await supabase
-          .from('organizations')
-          .update({
-            name: organizationName.trim() || organization.name || 'Mykante Workspace',
-            lgpd_contact_email: lgpdContactEmail.trim() || null,
-          })
-          .eq('id', organization.id);
-
-        if (organizationError) {
-          throw organizationError;
-        }
-
         await refreshPrivacy();
       }
-
-      await refreshAuth();
       window.alert('Configurações salvas.');
     } catch (error) {
       console.error('Settings save failed:', error);
       window.alert('Não foi possível salvar as configurações.');
-    } finally {
-      setSavingProfile(false);
     }
   };
 
@@ -219,42 +176,14 @@ export default function Settings() {
       return;
     }
 
-    setUploadingAvatar(true);
-
     try {
-      const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const storagePath = `${user.id}/avatar-${Date.now()}.${extension}`;
-      const { error: uploadError } = await supabase.storage
-        .from('profile-avatars')
-        .upload(storagePath, file, {
-          cacheControl: '3600',
-          contentType: file.type,
-          upsert: true,
-        });
-
-      if (uploadError) {
-        throw uploadError;
-      }
-
-      const { data } = supabase.storage.from('profile-avatars').getPublicUrl(storagePath);
-      const publicUrl = data.publicUrl;
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: publicUrl })
-        .eq('id', user.id);
-
-      if (profileError) {
-        throw profileError;
-      }
-
+      const publicUrl = await uploadProfileAvatar(file);
       setAvatarUrl(publicUrl);
       await refreshAuth();
       window.alert('Foto de perfil atualizada.');
     } catch (error) {
       console.error('Avatar upload failed:', error);
       window.alert('Não foi possível enviar a foto de perfil.');
-    } finally {
-      setUploadingAvatar(false);
     }
   };
 
@@ -264,23 +193,12 @@ export default function Settings() {
       return;
     }
 
-    setSecurityLoading(true);
-
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-        redirectTo: window.location.origin,
-      });
-
-      if (error) {
-        throw error;
-      }
-
+      await requestPasswordReset();
       window.alert('E-mail de redefinição enviado.');
     } catch (error) {
       console.error('Password reset request failed:', error);
       window.alert('Não foi possível enviar o e-mail de redefinição.');
-    } finally {
-      setSecurityLoading(false);
     }
   };
 
@@ -289,16 +207,9 @@ export default function Settings() {
     setApiHealthMessage('');
 
     try {
-      const { error, count } = await supabase
-        .from('organizations')
-        .select('id', { count: 'exact', head: true });
-
-      if (error) {
-        throw error;
-      }
-
-      setApiHealth('ok');
-      setApiHealthMessage(`Supabase operacional. Organizações visíveis: ${count ?? 0}.`);
+      const result = await checkApiHealth();
+      setApiHealth(result.status);
+      setApiHealthMessage(result.message);
     } catch (error) {
       setApiHealth('error');
       setApiHealthMessage(error instanceof Error ? error.message : 'Falha ao consultar o Supabase.');

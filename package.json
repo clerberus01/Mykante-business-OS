@@ -13,6 +13,8 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier . --write --ignore-unknown",
     "format:check": "prettier . --check --ignore-unknown",
+    "audit": "npm audit --audit-level=moderate",
+    "audit:prod": "npm audit --omit=dev --audit-level=moderate",
     "prepare": "husky",
     "test": "vitest run",
     "test:watch": "vitest"

@@ -1,5 +1,6 @@
 import { getSupabaseAdminClient } from './_lib/supabaseAdmin.js';
 import { sendJson } from './_lib/auth.js';
+import { withApiMiddleware } from './_lib/middleware.js';
 import { getPublicAppUrl } from './_lib/runtime.js';
 
 const REQUIRED_SERVER_ENVS = [
@@ -21,7 +22,7 @@ function getMissingEnvKeys() {
   });
 }
 
-export default async function handler(request, response) {
+async function handler(request, response) {
   if (request.method !== 'GET') {
     return sendJson(response, 405, { error: 'Method not allowed.' });
   }
@@ -75,3 +76,7 @@ export default async function handler(request, response) {
     });
   }
 }
+
+export default withApiMiddleware(handler, {
+  rateLimit: { keyPrefix: 'health', limit: 60, windowMs: 60_000 },
+});

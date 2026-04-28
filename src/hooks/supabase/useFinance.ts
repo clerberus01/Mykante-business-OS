@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BankStatementLine, CostCenter, FinanceCategory, Transaction } from '../../types';
 import { createTransactionRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
+import { queryKeys } from './queryKeys';
 
 function getQueryError(error: unknown, fallbackMessage: string) {
   return error ? toDataLayerError(error, fallbackMessage) : null;
@@ -16,10 +17,10 @@ export function useSupabaseTransactions() {
     [organizationId, supabase],
   );
 
-  const transactionsQueryKey = ['crm', organizationId, 'transactions'] as const;
-  const categoriesQueryKey = ['finance', organizationId, 'categories'] as const;
-  const costCentersQueryKey = ['finance', organizationId, 'cost-centers'] as const;
-  const bankLinesQueryKey = ['finance', organizationId, 'bank-lines'] as const;
+  const transactionsQueryKey = useMemo(() => queryKeys.crm.transactions(organizationId), [organizationId]);
+  const categoriesQueryKey = useMemo(() => queryKeys.finance.categories(organizationId), [organizationId]);
+  const costCentersQueryKey = useMemo(() => queryKeys.finance.costCenters(organizationId), [organizationId]);
+  const bankLinesQueryKey = useMemo(() => queryKeys.finance.bankLines(organizationId), [organizationId]);
   const transactionsQuery = useQuery({
     queryKey: transactionsQueryKey,
     enabled: Boolean(repository),

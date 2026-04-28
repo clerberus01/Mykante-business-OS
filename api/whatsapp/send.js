@@ -1,4 +1,5 @@
-import { getAuthenticatedContext, sendJson } from '../_lib/auth.js';
+import { sendJson } from '../_lib/auth.js';
+import { withApiMiddleware } from '../_lib/middleware.js';
 import { readJsonBody } from '../_lib/request.js';
 
 const DEFAULT_GRAPH_VERSION = 'v21.0';
@@ -30,7 +31,7 @@ async function updateConversationSummary(supabase, conversationId, organizationI
     .eq('organization_id', organizationId);
 }
 
-export default async function handler(request, response) {
+async function handler(request, response, authContext) {
   if (request.method !== 'POST') {
     return sendJson(response, 405, { error: 'Method not allowed.' });
   }
@@ -39,7 +40,7 @@ export default async function handler(request, response) {
   let dispatchContext = null;
 
   try {
-    const { supabase, user, organizationId } = await getAuthenticatedContext(request);
+    const { supabase, user, organizationId } = authContext;
     const { conversationId, body: rawBody } = await readJsonBody(request);
     const body = sanitizeBody(rawBody);
 
@@ -168,3 +169,8 @@ export default async function handler(request, response) {
     });
   }
 }
+
+export default withApiMiddleware(handler, {
+  auth: true,
+  rateLimit: { keyPrefix: 'whatsapp:send', limit: 60, windowMs: 60_000 },
+});

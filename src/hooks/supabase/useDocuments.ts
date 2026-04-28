@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { StoredDocument } from '../../types';
 import { createDocumentRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
+import { queryKeys } from './queryKeys';
 
 const DOCUMENT_BUCKET = 'documents';
 
@@ -31,7 +32,7 @@ export function useSupabaseDocuments() {
     () => (organizationId ? createDocumentRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const documentsQueryKey = ['documents', organizationId] as const;
+  const documentsQueryKey = useMemo(() => queryKeys.documents.root(organizationId), [organizationId]);
   const documentsQuery = useQuery({
     queryKey: documentsQueryKey,
     enabled: Boolean(repository),

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { getSupabaseAdminClient } from '../_lib/supabaseAdmin.js';
-import { readJsonBody } from '../_lib/request.js';
+import { withApiMiddleware } from '../_lib/middleware.js';
 
 function sendText(response, status, body) {
   response.status(status).setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -125,7 +125,7 @@ async function updateStatus(supabase, organizationId, status) {
     .eq('provider_message_id', status.id);
 }
 
-export default async function handler(request, response) {
+async function handler(request, response) {
   if (request.method === 'GET') {
     const mode = request.query['hub.mode'];
     const token = request.query['hub.verify_token'];
@@ -181,3 +181,7 @@ export default async function handler(request, response) {
     return sendText(response, 500, 'Webhook error.');
   }
 }
+
+export default withApiMiddleware(handler, {
+  rateLimit: { keyPrefix: 'whatsapp:webhook', limit: 300, windowMs: 60_000 },
+});

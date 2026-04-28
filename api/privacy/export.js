@@ -1,12 +1,13 @@
-import { getAuthenticatedContext, sendJson } from '../_lib/auth.js';
+import { sendJson } from '../_lib/auth.js';
+import { withApiMiddleware } from '../_lib/middleware.js';
 
-export default async function handler(request, response) {
+async function handler(request, response, authContext) {
   if (request.method !== 'POST') {
     return sendJson(response, 405, { error: 'Method not allowed.' });
   }
 
   try {
-    const { supabase, user, organizationId } = await getAuthenticatedContext(request);
+    const { supabase, user, organizationId } = authContext;
 
     const { data, error } = await supabase.rpc('export_current_user_personal_data');
 
@@ -38,3 +39,8 @@ export default async function handler(request, response) {
     });
   }
 }
+
+export default withApiMiddleware(handler, {
+  auth: true,
+  rateLimit: { keyPrefix: 'privacy:export', limit: 10, windowMs: 60_000 },
+});

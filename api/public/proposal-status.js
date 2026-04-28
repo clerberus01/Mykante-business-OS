@@ -1,4 +1,5 @@
 import { sendJson } from '../_lib/auth.js';
+import { withApiMiddleware } from '../_lib/middleware.js';
 import { readJsonBody } from '../_lib/request.js';
 import { getSupabaseAdminClient } from '../_lib/supabaseAdmin.js';
 import { isAuthorizedClientEmail, mapPublicProposalStatus } from '../_lib/proposalStatus.js';
@@ -7,7 +8,7 @@ function isUuidLike(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
-export default async function handler(request, response) {
+async function handler(request, response) {
   if (request.method !== 'POST') {
     return sendJson(response, 405, { error: 'Method not allowed.' });
   }
@@ -74,3 +75,7 @@ export default async function handler(request, response) {
     });
   }
 }
+
+export default withApiMiddleware(handler, {
+  rateLimit: { keyPrefix: 'public:proposal-status', limit: 30, windowMs: 60_000 },
+});

@@ -12,3 +12,12 @@ export { useSupabaseNotifications } from './useNotifications';
 export { useSupabasePrivacy } from './usePrivacy';
 export { useSupabaseDashboard } from './useDashboard';
 export { useSupabaseWhatsapp } from './useWhatsapp';
+export {
+  useSupabaseCalendar,
+  type CalendarAttendee,
+  type CalendarEventType,
+  type ManualCalendarEvent,
+  type TaskRow,
+} from './useCalendar';
+export { useSupabaseSettings } from './useSettings';
+export { useClientAvatarUpload } from './useClientAvatarUpload';

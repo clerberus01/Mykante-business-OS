@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRepositoryContext } from './useRepositoryContext';
 import {
   getOneSignalSnapshot,
@@ -9,6 +9,7 @@ import {
   syncOneSignalUser,
 } from '../../lib/onesignal';
 import { toDataLayerError } from '../../services';
+import { queryKeys } from './queryKeys';
 
 type NotificationChannel = 'email' | 'push' | 'whatsapp';
 
@@ -40,6 +41,19 @@ type NotificationPreferenceState = {
 };
 
 type NotificationState = Record<NotificationChannel, NotificationPreferenceState>;
+
+type PushStatus = {
+  permission: boolean;
+  subscriptionId: string | null;
+  onesignalId: string | null;
+  optedIn: boolean;
+};
+
+type NotificationQueryState = {
+  preferences: NotificationState;
+  pushSubscription: NotificationSubscriptionRecord | null;
+  pushStatus: PushStatus;
+};
 
 const DEFAULT_PREFERENCES: NotificationState = {
   email: {
@@ -84,85 +98,84 @@ function mergePreferences(rows: NotificationPreferenceRecord[] | null | undefine
 export function useSupabaseNotifications() {
   const { supabase, organizationId, currentUserId, currentUserName, currentUserRole } =
     useRepositoryContext();
-  const [preferences, setPreferences] = useState<NotificationState>(DEFAULT_PREFERENCES);
-  const [pushSubscription, setPushSubscription] = useState<NotificationSubscriptionRecord | null>(null);
-  const [pushStatus, setPushStatus] = useState<{
-    permission: boolean;
-    subscriptionId: string | null;
-    onesignalId: string | null;
-    optedIn: boolean;
-  }>({
-    permission: false,
-    subscriptionId: null,
-    onesignalId: null,
-    optedIn: false,
-  });
-  const [loading, setLoading] = useState(Boolean(organizationId));
+  const queryClient = useQueryClient();
+  const notificationsQueryKey = queryKeys.notifications.root(organizationId, currentUserId);
+  const emptyPushStatus = useMemo<PushStatus>(
+    () => ({
+      permission: false,
+      subscriptionId: null,
+      onesignalId: null,
+      optedIn: false,
+    }),
+    [],
+  );
 
-  const loadNotificationState = useCallback(async () => {
+  const loadNotificationState = useCallback(async (): Promise<NotificationQueryState> => {
     if (!organizationId) {
-      setPreferences(DEFAULT_PREFERENCES);
-      setPushSubscription(null);
-      setLoading(false);
-      return;
+      return {
+        preferences: DEFAULT_PREFERENCES,
+        pushSubscription: null,
+        pushStatus: emptyPushStatus,
+      };
     }
 
-    setLoading(true);
+    const [preferenceResult, subscriptionResult, oneSignalSnapshot] = await Promise.all([
+      supabase
+        .from('notification_preferences')
+        .select('id, channel, enabled, quiet_hours_start, quiet_hours_end, metadata')
+        .eq('organization_id', organizationId)
+        .eq('user_id', currentUserId),
+      supabase
+        .from('notification_subscriptions')
+        .select('id, channel, provider, provider_subscription_id, endpoint, status, metadata, last_seen_at')
+        .eq('organization_id', organizationId)
+        .eq('user_id', currentUserId)
+        .eq('channel', 'push')
+        .eq('provider', 'onesignal')
+        .limit(1),
+      getOneSignalSnapshot(),
+    ]);
 
-    try {
-      const [preferenceResult, subscriptionResult, oneSignalSnapshot] = await Promise.all([
-        supabase
-          .from('notification_preferences')
-          .select('id, channel, enabled, quiet_hours_start, quiet_hours_end, metadata')
-          .eq('organization_id', organizationId)
-          .eq('user_id', currentUserId),
-        supabase
-          .from('notification_subscriptions')
-          .select('id, channel, provider, provider_subscription_id, endpoint, status, metadata, last_seen_at')
-          .eq('organization_id', organizationId)
-          .eq('user_id', currentUserId)
-          .eq('channel', 'push')
-          .eq('provider', 'onesignal')
-          .limit(1),
-        getOneSignalSnapshot(),
-      ]);
+    if (preferenceResult.error) {
+      throw preferenceResult.error;
+    }
 
-      if (preferenceResult.error) {
-        throw preferenceResult.error;
-      }
+    if (subscriptionResult.error) {
+      throw subscriptionResult.error;
+    }
 
-      if (subscriptionResult.error) {
-        throw subscriptionResult.error;
-      }
-
-      setPreferences(mergePreferences(preferenceResult.data as NotificationPreferenceRecord[]));
-      setPushSubscription(((subscriptionResult.data as NotificationSubscriptionRecord[] | null) ?? [])[0] ?? null);
-      setPushStatus({
+    return {
+      preferences: mergePreferences(preferenceResult.data as NotificationPreferenceRecord[]),
+      pushSubscription: ((subscriptionResult.data as NotificationSubscriptionRecord[] | null) ?? [])[0] ?? null,
+      pushStatus: {
         permission: oneSignalSnapshot?.permission ?? false,
         subscriptionId: oneSignalSnapshot?.subscriptionId ?? null,
         onesignalId: oneSignalSnapshot?.onesignalId ?? null,
         optedIn: oneSignalSnapshot?.optedIn ?? false,
-      });
-    } catch (error) {
-      console.warn(
-        'Supabase notifications load failed:',
-        toDataLayerError(error, 'Falha ao carregar preferencias de notificacao.'),
-      );
-      setPreferences(DEFAULT_PREFERENCES);
-      setPushSubscription(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentUserId, organizationId, supabase]);
+      },
+    };
+  }, [currentUserId, emptyPushStatus, organizationId, supabase]);
 
-  const notificationQuery = useQuery({
-    queryKey: ['notifications', organizationId, currentUserId],
-    queryFn: async () => {
-      await loadNotificationState();
-      return true;
-    },
+  const notificationQuery = useQuery<NotificationQueryState>({
+    queryKey: notificationsQueryKey,
+    queryFn: loadNotificationState,
     enabled: Boolean(currentUserId),
+    initialData: {
+      preferences: DEFAULT_PREFERENCES,
+      pushSubscription: null,
+      pushStatus: emptyPushStatus,
+    },
   });
+  const preferences = notificationQuery.data.preferences;
+  const pushSubscription = notificationQuery.data.pushSubscription;
+  const pushStatus = notificationQuery.data.pushStatus;
+
+  if (notificationQuery.error) {
+    console.warn(
+      'Supabase notifications load failed:',
+      toDataLayerError(notificationQuery.error, 'Falha ao carregar preferencias de notificacao.'),
+    );
+  }
 
   const upsertConsent = useCallback(
     async (channel: NotificationChannel, status: 'granted' | 'revoked') => {
@@ -243,7 +256,11 @@ export function useSupabaseNotifications() {
           optedIn: event.current.optedIn,
         };
 
-        setPushStatus(nextState);
+        queryClient.setQueryData<NotificationQueryState>(notificationsQueryKey, (current) => ({
+          preferences: current?.preferences ?? DEFAULT_PREFERENCES,
+          pushSubscription: current?.pushSubscription ?? null,
+          pushStatus: nextState,
+        }));
 
         if (!organizationId) return;
 
@@ -256,7 +273,7 @@ export function useSupabaseNotifications() {
             optedIn: event.current.optedIn,
           });
           await upsertConsent('push', event.current.optedIn && event.permission ? 'granted' : 'revoked');
-          await loadNotificationState();
+          await queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
         } catch (error) {
           console.warn(
             'OneSignal subscription sync failed:',
@@ -271,10 +288,10 @@ export function useSupabaseNotifications() {
     return () => {
       detach?.();
     };
-  }, [loadNotificationState, organizationId, persistPushSubscription, upsertConsent]);
+  }, [notificationsQueryKey, organizationId, persistPushSubscription, queryClient, upsertConsent]);
 
-  const setChannelEnabled = useCallback(
-    async (channel: NotificationChannel, enabled: boolean) => {
+  const setChannelEnabledMutation = useMutation({
+    mutationFn: async ({ channel, enabled }: { channel: NotificationChannel; enabled: boolean }) => {
       if (!organizationId) return;
 
       const nextState = {
@@ -298,12 +315,16 @@ export function useSupabaseNotifications() {
             throw new Error('Push permission was not granted.');
           }
 
-          setPushStatus({
-            permission: pushSnapshot.permission,
-            subscriptionId: pushSnapshot.subscriptionId,
-            onesignalId: pushSnapshot.onesignalId,
-            optedIn: pushSnapshot.optedIn,
-          });
+          queryClient.setQueryData<NotificationQueryState>(notificationsQueryKey, (current) => ({
+            preferences: current?.preferences ?? DEFAULT_PREFERENCES,
+            pushSubscription: current?.pushSubscription ?? null,
+            pushStatus: {
+              permission: pushSnapshot.permission,
+              subscriptionId: pushSnapshot.subscriptionId,
+              onesignalId: pushSnapshot.onesignalId,
+              optedIn: pushSnapshot.optedIn,
+            },
+          }));
           await persistPushSubscription({
             subscriptionId: pushSnapshot.subscriptionId,
             onesignalId: pushSnapshot.onesignalId,
@@ -343,29 +364,18 @@ export function useSupabaseNotifications() {
         throw error;
       }
 
-      setPreferences((current) => ({
-        ...current,
-        [channel]: nextState,
-      }));
-
       if (channel === 'email') {
         await upsertConsent('email', enabled ? 'granted' : 'revoked');
       }
-
-      await loadNotificationState();
     },
-    [
-      currentUserId,
-      currentUserRole,
-      loadNotificationState,
-      organizationId,
-      persistPushSubscription,
-      preferences,
-      pushStatus.onesignalId,
-      pushStatus.subscriptionId,
-      supabase,
-      upsertConsent,
-    ],
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
+    },
+  });
+
+  const setChannelEnabled = useCallback(
+    (channel: NotificationChannel, enabled: boolean) => setChannelEnabledMutation.mutateAsync({ channel, enabled }),
+    [setChannelEnabledMutation],
   );
 
   const summary = useMemo(
@@ -382,7 +392,7 @@ export function useSupabaseNotifications() {
     pushStatus,
     pushSubscription,
     summary,
-    loading: loading || notificationQuery.isLoading || notificationQuery.isFetching,
+    loading: notificationQuery.isLoading || notificationQuery.isFetching || setChannelEnabledMutation.isPending,
     setChannelEnabled,
     refreshNotifications: async () => {
       await notificationQuery.refetch();

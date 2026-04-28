@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Client, CrmDeal, CrmPipelineStage, TimelineEvent } from '../../types';
 import { createClientRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
+import { queryKeys } from './queryKeys';
 
 function getQueryError(error: unknown, fallbackMessage: string) {
   return error ? toDataLayerError(error, fallbackMessage) : null;
@@ -16,7 +17,7 @@ export function useSupabaseClients() {
     [organizationId, supabase],
   );
 
-  const clientsQueryKey = ['crm', organizationId, 'clients'] as const;
+  const clientsQueryKey = useMemo(() => queryKeys.crm.clients(organizationId), [organizationId]);
   const clientsQuery = useQuery({
     queryKey: clientsQueryKey,
     enabled: Boolean(repository),
@@ -48,7 +49,7 @@ export function useSupabaseClients() {
       await repository.createClient(client);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['crm', organizationId] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.crm.root(organizationId) });
     },
   });
 
@@ -59,7 +60,7 @@ export function useSupabaseClients() {
       await repository.softDeleteClient(id);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['crm', organizationId] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.crm.root(organizationId) });
     },
   });
 
@@ -69,7 +70,7 @@ export function useSupabaseClients() {
       await repository.updateClient(id, data);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['crm', organizationId] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.crm.root(organizationId) });
     },
   });
 
@@ -99,7 +100,7 @@ export function useSupabaseEvents(clientId: string | null) {
     () => (organizationId ? createClientRepository(supabase, organizationId) : null),
     [organizationId, supabase],
   );
-  const eventsQueryKey = ['crm', organizationId, 'clients', clientId, 'events'] as const;
+  const eventsQueryKey = useMemo(() => queryKeys.crm.clientEvents(organizationId, clientId), [clientId, organizationId]);
 
   const eventsQuery = useQuery({
     queryKey: eventsQueryKey,
@@ -172,7 +173,7 @@ export function useSupabasePipeline() {
   );
 
   const stagesQuery = useQuery({
-    queryKey: ['crm', organizationId, 'pipeline-stages'],
+    queryKey: queryKeys.crm.pipelineStages(organizationId),
     enabled: Boolean(repository),
     queryFn: async () => {
       if (!repository) return [];
@@ -181,7 +182,7 @@ export function useSupabasePipeline() {
   });
 
   const dealsQuery = useQuery({
-    queryKey: ['crm', organizationId, 'deals'],
+    queryKey: queryKeys.crm.deals(organizationId),
     enabled: Boolean(repository),
     queryFn: async () => {
       if (!repository) return [];
@@ -204,8 +205,10 @@ export function useSupabasePipeline() {
     },
     onSuccess: async (_data, variables) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['crm', organizationId, 'deals'] }),
-        queryClient.invalidateQueries({ queryKey: ['crm', organizationId, 'clients', variables.deal.clientId, 'events'] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.crm.deals(organizationId) }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.crm.clientEvents(organizationId, variables.deal.clientId),
+        }),
       ]);
     },
   });

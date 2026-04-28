@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRepositoryContext } from './useRepositoryContext';
 import { toDataLayerError } from '../../services';
+import { queryKeys } from './queryKeys';
 
 type DataSubjectRequestType =
   | 'confirm'
@@ -72,7 +73,7 @@ function mapRetentionRow(row: any): RetentionPolicy {
 export function useSupabasePrivacy() {
   const { supabase, organizationId, currentUserId } = useRepositoryContext();
   const queryClient = useQueryClient();
-  const queryKey = ['privacy', organizationId, currentUserId] as const;
+  const queryKey = queryKeys.privacy.root(organizationId, currentUserId);
 
   const loadPrivacyState = useCallback(async (): Promise<PrivacyState> => {
     if (!organizationId) {
@@ -179,6 +180,6 @@ export function useSupabasePrivacy() {
     createDataRequest,
     refreshPrivacy: async () => {
       await privacyQuery.refetch();
-    }
+    },
   };
 }

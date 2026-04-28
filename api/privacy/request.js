@@ -1,4 +1,5 @@
-import { getAuthenticatedContext, sendJson } from '../_lib/auth.js';
+import { sendJson } from '../_lib/auth.js';
+import { withApiMiddleware } from '../_lib/middleware.js';
 import { readJsonBody } from '../_lib/request.js';
 
 const ALLOWED_TYPES = new Set([
@@ -11,13 +12,13 @@ const ALLOWED_TYPES = new Set([
   'revocation',
 ]);
 
-export default async function handler(request, response) {
+async function handler(request, response, authContext) {
   if (request.method !== 'POST') {
     return sendJson(response, 405, { error: 'Method not allowed.' });
   }
 
   try {
-    const { supabase, user, organizationId } = await getAuthenticatedContext(request);
+    const { supabase, user, organizationId } = authContext;
     const { requestType, requestDetails } = await readJsonBody(request);
 
     if (!ALLOWED_TYPES.has(requestType)) {
@@ -53,3 +54,8 @@ export default async function handler(request, response) {
     });
   }
 }
+
+export default withApiMiddleware(handler, {
+  auth: true,
+  rateLimit: { keyPrefix: 'privacy:request', limit: 20, windowMs: 60_000 },
+});

@@ -1,11 +1,12 @@
-import { getAuthenticatedContext, sendJson } from '../_lib/auth.js';
+import { sendJson } from '../_lib/auth.js';
+import { withApiMiddleware } from '../_lib/middleware.js';
 import { readJsonBody } from '../_lib/request.js';
 import { getPublicAppUrl } from '../_lib/runtime.js';
 
 const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID;
 const ONESIGNAL_API_KEY = process.env.ONESIGNAL_API_KEY || process.env.ONESIGNAL_REST_API_KEY;
 
-export default async function handler(request, response) {
+async function handler(request, response, authContext) {
   if (request.method !== 'POST') {
     return sendJson(response, 405, { error: 'Method not allowed.' });
   }
@@ -20,7 +21,7 @@ export default async function handler(request, response) {
       throw new Error('Missing OneSignal server credentials.');
     }
 
-    const { supabase, user, profile, organizationId } = await getAuthenticatedContext(request);
+    const { supabase, user, profile, organizationId } = authContext;
     adminClient = supabase;
     const publicAppUrl = getPublicAppUrl();
 
@@ -100,3 +101,8 @@ export default async function handler(request, response) {
     });
   }
 }
+
+export default withApiMiddleware(handler, {
+  auth: true,
+  rateLimit: { keyPrefix: 'notifications:push', limit: 30, windowMs: 60_000 },
+});

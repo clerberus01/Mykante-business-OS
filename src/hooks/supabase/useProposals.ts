@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Proposal } from '../../types';
 import { createProposalRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
+import { queryKeys } from './queryKeys';
 
 function getQueryError(error: unknown, fallbackMessage: string) {
   return error ? toDataLayerError(error, fallbackMessage) : null;
@@ -16,7 +17,7 @@ export function useSupabaseProposals() {
     [organizationId, supabase],
   );
 
-  const proposalsQueryKey = ['crm', organizationId, 'proposals'] as const;
+  const proposalsQueryKey = useMemo(() => queryKeys.crm.proposals(organizationId), [organizationId]);
   const proposalsQuery = useQuery({
     queryKey: proposalsQueryKey,
     enabled: Boolean(repository),
@@ -48,7 +49,7 @@ export function useSupabaseProposals() {
       await repository.createProposal(proposal);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['crm', organizationId] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.crm.root(organizationId) });
     },
   });
 
@@ -60,7 +61,7 @@ export function useSupabaseProposals() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: proposalsQueryKey }),
-        queryClient.invalidateQueries({ queryKey: ['crm', organizationId, 'transactions'] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.crm.transactions(organizationId) }),
       ]);
     },
   });
