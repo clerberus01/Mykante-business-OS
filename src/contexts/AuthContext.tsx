@@ -45,12 +45,11 @@ interface AuthContextType {
   enrollMfa: () => Promise<MfaEnrollment>;
   verifyMfaEnrollment: (factorId: string, code: string) => Promise<void>;
   verifyMfaChallenge: (code: string) => Promise<void>;
-  signIn: (email: string, password: string) => Promise<void>;
-  createInitialAdminAccess: (input: {
-    fullName: string;
-    email: string;
+  signIn: (identifier: string, password: string) => Promise<void>;
+  signUp: (input: {
+    identifier: string;
     password: string;
-  }) => Promise<{ requiresEmailConfirmation: boolean }>;
+  }) => Promise<{ requiresConfirmation: boolean }>;
   logout: () => Promise<void>;
   signOut: () => Promise<void>;
   isAdmin: boolean;
@@ -59,7 +58,6 @@ interface AuthContextType {
   claimInitialPlatformAdmin: () => Promise<void>;
   role: AuthRole | null;
   organization: OrganizationSummary | null;
-  canCreateInitialAdmin: boolean;
   refreshAuth: () => Promise<void>;
 }
 
@@ -72,7 +70,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<AuthRole | null>(null);
   const [organization, setOrganization] = useState<OrganizationSummary | null>(null);
-  const [canCreateInitialAdmin, setCanCreateInitialAdmin] = useState(false);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [canClaimInitialPlatformAdmin, setCanClaimInitialPlatformAdmin] = useState(false);
   const [mfaStatus, setMfaStatus] = useState<MfaStatus>('unknown');
@@ -121,28 +118,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return verifiedTotpFactorId ? 'challenge_required' : 'enrollment_required';
   };
 
-  const loadBootstrapStatus = async () => {
-    const { data, error } = await supabase.rpc('get_auth_bootstrap_status');
-
-    if (error) {
-      console.error('Supabase bootstrap status error:', error);
-      return false;
-    }
-
-    const status = (!data
-      ? null
-      : Array.isArray(data)
-        ? data[0]
-        : data) as { can_create_initial_admin?: boolean } | null;
-    const canCreate = Boolean(status?.can_create_initial_admin);
-    setCanCreateInitialAdmin(canCreate);
-    return canCreate;
-  };
-
   const hydrateAuthState = async (nextSession: Session | null) => {
     if (!nextSession?.user) {
       resetState();
-      await loadBootstrapStatus();
       setLoading(false);
       return;
     }
@@ -166,7 +144,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (nextMfaStatus !== 'verified') {
         clearOrganizationState();
-        setCanCreateInitialAdmin(false);
         return;
       }
 
@@ -263,7 +240,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           : null,
       );
-      setCanCreateInitialAdmin(false);
 
       try {
         await syncOneSignalUser({
@@ -277,7 +253,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Supabase auth bootstrap error:', error);
       resetState();
-      await loadBootstrapStatus();
     } finally {
       setLoading(false);
     }
@@ -316,65 +291,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const signIn = async (email: string, password: string) => {
-    const normalizedEmail = email.trim().toLowerCase();
+  const getAuthCredentials = (identifier: string) => {
+    const normalizedIdentifier = identifier.trim();
+    const normalizedEmail = normalizedIdentifier.toLowerCase();
+    const phoneDigits = normalizedIdentifier.replace(/\D/g, '');
 
-    assertAuthAttemptAllowed('sign-in', normalizedEmail);
+    if (normalizedIdentifier.includes('@')) {
+      return {
+        attemptKey: normalizedEmail,
+        credentials: { email: normalizedEmail } as { email: string } | { phone: string },
+      };
+    }
+
+    if (phoneDigits.length < 8) {
+      throw new Error('Informe um e-mail ou telefone valido.');
+    }
+
+    const phone = normalizedIdentifier.startsWith('+')
+      ? `+${phoneDigits}`
+      : phoneDigits.length === 10 || phoneDigits.length === 11
+        ? `+55${phoneDigits}`
+        : `+${phoneDigits}`;
+
+    return {
+      attemptKey: phone,
+      credentials: { phone } as { email: string } | { phone: string },
+    };
+  };
+
+  const signIn = async (identifier: string, password: string) => {
+    const { attemptKey, credentials } = getAuthCredentials(identifier);
+
+    assertAuthAttemptAllowed('sign-in', attemptKey);
 
     const { error } = await supabase.auth.signInWithPassword({
-      email: normalizedEmail,
+      ...credentials,
       password,
     });
 
     if (error) {
-      recordAuthAttemptFailure('sign-in', normalizedEmail);
+      recordAuthAttemptFailure('sign-in', attemptKey);
       throw error;
     }
 
-    recordAuthAttemptSuccess('sign-in', normalizedEmail);
+    recordAuthAttemptSuccess('sign-in', attemptKey);
   };
 
-  const createInitialAdminAccess = async ({
-    fullName,
-    email,
-    password,
-  }: {
-    fullName: string;
-    email: string;
-    password: string;
-  }) => {
-    const normalizedEmail = email.trim().toLowerCase();
+  const signUp = async ({ identifier, password }: { identifier: string; password: string }) => {
+    const { attemptKey, credentials } = getAuthCredentials(identifier);
 
-    assertAuthAttemptAllowed('initial-admin', normalizedEmail);
-
-    const canCreate = await loadBootstrapStatus();
-
-    if (!canCreate) {
-      recordAuthAttemptFailure('initial-admin', normalizedEmail);
-      throw new Error('O acesso ADM inicial já foi configurado.');
-    }
+    assertAuthAttemptAllowed('sign-up', attemptKey);
 
     const { data, error } = await supabase.auth.signUp({
-      email: normalizedEmail,
+      ...credentials,
       password,
       options: {
-        data: {
-          full_name: fullName,
-          name: fullName,
-        },
         emailRedirectTo: window.location.origin,
       },
     });
 
     if (error) {
-      recordAuthAttemptFailure('initial-admin', normalizedEmail);
+      recordAuthAttemptFailure('sign-up', attemptKey);
       throw error;
     }
 
-    recordAuthAttemptSuccess('initial-admin', normalizedEmail);
+    recordAuthAttemptSuccess('sign-up', attemptKey);
 
     return {
-      requiresEmailConfirmation: !data.session,
+      requiresConfirmation: !data.session,
     };
   };
 
@@ -488,7 +472,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     verifyMfaEnrollment,
     verifyMfaChallenge,
     signIn,
-    createInitialAdminAccess,
+    signUp,
     logout,
     signOut: logout,
     isAdmin,
@@ -497,7 +481,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     claimInitialPlatformAdmin,
     role,
     organization,
-    canCreateInitialAdmin,
     refreshAuth: async () => {
       setLoading(true);
       const {

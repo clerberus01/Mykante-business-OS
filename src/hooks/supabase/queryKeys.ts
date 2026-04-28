@@ -46,6 +46,12 @@ export const queryKeys = {
   },
   calendar: {
     root: (organizationId: string | null) => ['calendar', organizationId] as const,
+  },
+  contracts: {
+    root: (organizationId: string | null) => ['contracts', organizationId] as const,
+    marketplace: (organizationId: string | null) => ['contracts', organizationId, 'marketplace'] as const,
+  },
+  settings: {
     mfa: (userId: string) => ['settings', userId, 'mfa'] as const,
     apiHealth: (organizationId: string | null) => ['settings', organizationId, 'api-health'] as const,
   },

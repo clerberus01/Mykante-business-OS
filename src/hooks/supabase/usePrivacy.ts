@@ -179,7 +179,7 @@ export function useSupabasePrivacy() {
     loading: privacyQuery.isLoading || privacyQuery.isFetching,
     createDataRequest,
     refreshPrivacy: async () => {
-      await privacyQuery.refetch();
+      await queryClient.fetchQuery({ queryKey, queryFn: loadPrivacyState });
     },
   };
 }

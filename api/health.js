@@ -1,7 +1,6 @@
 import { getSupabaseAdminClient } from './_lib/supabaseAdmin.js';
 import { sendJson } from './_lib/auth.js';
 import { withApiMiddleware } from './_lib/middleware.js';
-import { getPublicAppUrl } from './_lib/runtime.js';
 
 const REQUIRED_SERVER_ENVS = [
   'SUPABASE_PROJECT_URL',
@@ -29,19 +28,14 @@ async function handler(request, response) {
 
   try {
     const missingEnv = getMissingEnvKeys();
-    const publicAppUrl = getPublicAppUrl();
-
     if (missingEnv.length > 0) {
       return sendJson(response, 503, {
         success: false,
-        runtime: 'vercel-nodejs',
         checks: {
           database: 'skipped',
           env: 'missing',
-          appUrl: publicAppUrl ? 'ok' : 'missing_or_invalid',
         },
         missingEnvCount: missingEnv.length,
-        publicAppUrl,
         now: new Date().toISOString(),
       });
     }
@@ -55,23 +49,19 @@ async function handler(request, response) {
 
     return sendJson(response, 200, {
       success: true,
-      runtime: 'vercel-nodejs',
       checks: {
         database: 'ok',
         env: 'ok',
-        appUrl: publicAppUrl ? 'ok' : 'missing_or_invalid',
       },
       missingEnvCount: missingEnv.length,
-      publicAppUrl,
       now: new Date().toISOString(),
     });
   } catch (error) {
+    console.error('Healthcheck failed:', error);
     return sendJson(response, 500, {
       success: false,
-      runtime: 'vercel-nodejs',
-      error: error instanceof Error ? error.message : 'Healthcheck failed.',
+      error: 'Healthcheck failed.',
       missingEnvCount: getMissingEnvKeys().length,
-      publicAppUrl: getPublicAppUrl(),
       now: new Date().toISOString(),
     });
   }

@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useCallback } from 'react';
+import React, { lazy, Suspense } from 'react';
 import {
   createRootRoute,
   createRoute,
@@ -8,51 +8,43 @@ import {
   useNavigate,
   useRouterState,
 } from '@tanstack/react-router';
-import Layout from './components/Layout';
+import { z } from 'zod';
+import Layout from './shared/components/Layout';
 import { useAuth } from './contexts/AuthContext';
-import ContentErrorBoundary from './components/ContentErrorBoundary';
-import MfaGate from './components/MfaGate';
-import { setPendingNavigationIntent } from './lib/navigation';
+import ContentErrorBoundary from './shared/components/ContentErrorBoundary';
+import MfaGate from './features/auth/components/MfaGate';
 
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const CRM = lazy(() => import('./pages/CRM'));
-const Login = lazy(() => import('./pages/Login'));
-const Projects = lazy(() => import('./pages/Projects'));
-const Calendar = lazy(() => import('./pages/Calendar'));
-const Documents = lazy(() => import('./pages/Documents'));
-const Contracts = lazy(() => import('./pages/Contracts'));
-const Settings = lazy(() => import('./pages/Settings'));
-const Finance = lazy(() => import('./pages/Finance'));
-const Communications = lazy(() => import('./pages/Communications'));
-const Automations = lazy(() => import('./pages/Automations'));
+const Dashboard = lazy(() => import('./features/dashboard/pages/Dashboard'));
+const CRM = lazy(() => import('./features/crm/pages/CRM'));
+const Login = lazy(() => import('./features/auth/pages/Login'));
+const Projects = lazy(() => import('./features/projects/pages/Projects'));
+const Calendar = lazy(() => import('./features/calendar/pages/Calendar'));
+const Documents = lazy(() => import('./features/documents/pages/Documents'));
+const Contracts = lazy(() => import('./features/contracts/pages/Contracts'));
+const Settings = lazy(() => import('./features/settings/pages/Settings'));
+const Finance = lazy(() => import('./features/finance/pages/Finance'));
+const Communications = lazy(() => import('./features/communications/pages/Communications'));
+const Automations = lazy(() => import('./features/automations/pages/Automations'));
+const PlatformAdmin = lazy(() => import('./features/platform-admin/pages/PlatformAdmin'));
 const ProposalStatus = lazy(() => import('./pages/public/ProposalStatus'));
 const ClientStatus = lazy(() => import('./pages/public/ClientStatus'));
 
-const tabRoutes: Record<string, string> = {
-  dashboard: '/',
-  crm: '/crm',
-  projects: '/projects',
-  calendar: '/calendar',
-  finance: '/finance',
-  messages: '/messages',
-  docs: '/docs',
-  contracts: '/contracts',
-  automations: '/automations',
-  settings: '/settings',
-};
-
-const routeTabs: Record<string, string> = {
-  '/': 'dashboard',
-  '/crm': 'crm',
-  '/projects': 'projects',
-  '/calendar': 'calendar',
-  '/finance': 'finance',
-  '/messages': 'messages',
-  '/docs': 'docs',
-  '/contracts': 'contracts',
-  '/automations': 'automations',
-  '/settings': 'settings',
-};
+const emptySearchSchema = z.object({}).catch({});
+const crmSearchSchema = z.object({
+  clientId: z.string().min(1).optional(),
+  action: z.enum(['create-client']).optional(),
+}).catch({});
+const projectsSearchSchema = z.object({
+  projectId: z.string().min(1).optional(),
+  action: z.enum(['create-project']).optional(),
+}).catch({});
+const financeSearchSchema = z.object({
+  action: z.enum(['create-transaction']).optional(),
+  timestamp: z.coerce.number().finite().optional(),
+}).catch({});
+const documentsSearchSchema = z.object({
+  action: z.enum(['upload-document']).optional(),
+}).catch({});
 
 function AppLoadingFallback() {
   return (
@@ -67,15 +59,9 @@ function AppLoadingFallback() {
 
 function ProtectedShell({ children }: { children: React.ReactNode }) {
   const { user, loading, mfaRequired } = useAuth();
-  const navigate = useNavigate();
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const activeTab = routeTabs[pathname] ?? 'dashboard';
-  const setActiveTab = useCallback(
-    (tab: string) => {
-      void navigate({ to: tabRoutes[tab] ?? '/' });
-    },
-    [navigate],
-  );
+  const routeKey = useRouterState({
+    select: (state) => `${state.location.pathname}:${JSON.stringify(state.location.search)}`,
+  });
 
   if (loading) {
     return <AppLoadingFallback />;
@@ -90,8 +76,8 @@ function ProtectedShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      <ContentErrorBoundary resetKey={activeTab}>
+    <Layout>
+      <ContentErrorBoundary resetKey={routeKey}>
         {children}
       </ContentErrorBoundary>
     </Layout>
@@ -105,8 +91,7 @@ function DashboardRoute() {
     <ProtectedShell>
       <Dashboard
         onOpenProject={(projectId) => {
-          setPendingNavigationIntent({ kind: 'open-project', projectId });
-          void navigate({ to: '/projects' });
+          void navigate({ to: '/projects', search: { projectId } });
         }}
       />
     </ProtectedShell>
@@ -120,15 +105,13 @@ function CalendarRoute() {
     <ProtectedShell>
       <Calendar
         onOpenProject={(projectId) => {
-          setPendingNavigationIntent({ kind: 'open-project', projectId });
-          void navigate({ to: '/projects' });
+          void navigate({ to: '/projects', search: { projectId } });
         }}
         onOpenFinance={() => {
           void navigate({ to: '/finance' });
         }}
         onCreateTransaction={(timestamp) => {
-          setPendingNavigationIntent({ kind: 'create-transaction', timestamp });
-          void navigate({ to: '/finance' });
+          void navigate({ to: '/finance', search: { action: 'create-transaction', timestamp } });
         }}
       />
     </ProtectedShell>
@@ -167,6 +150,10 @@ function SettingsRoute() {
   return <ProtectedShell><Settings /></ProtectedShell>;
 }
 
+function PlatformAdminRoute() {
+  return <ProtectedShell><PlatformAdmin /></ProtectedShell>;
+}
+
 function PublicProposalStatusRoute() {
   return <ProposalStatus />;
 }
@@ -183,60 +170,77 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   component: DashboardRoute,
+  validateSearch: (search) => emptySearchSchema.parse(search),
 });
 
 const crmRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/crm',
   component: CrmRoute,
+  validateSearch: (search) => crmSearchSchema.parse(search),
 });
 
 const projectsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects',
   component: ProjectsRoute,
+  validateSearch: (search) => projectsSearchSchema.parse(search),
 });
 
 const calendarRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/calendar',
   component: CalendarRoute,
+  validateSearch: (search) => emptySearchSchema.parse(search),
 });
 
 const financeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/finance',
   component: FinanceRoute,
+  validateSearch: (search) => financeSearchSchema.parse(search),
 });
 
 const communicationsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/messages',
   component: CommunicationsRoute,
+  validateSearch: (search) => emptySearchSchema.parse(search),
 });
 
 const documentsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/docs',
   component: DocumentsRoute,
+  validateSearch: (search) => documentsSearchSchema.parse(search),
 });
 
 const contractsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/contracts',
   component: ContractsRoute,
+  validateSearch: (search) => emptySearchSchema.parse(search),
 });
 
 const automationsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/automations',
   component: AutomationsRoute,
+  validateSearch: (search) => emptySearchSchema.parse(search),
 });
 
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
   component: SettingsRoute,
+  validateSearch: (search) => emptySearchSchema.parse(search),
+});
+
+const platformAdminRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin',
+  component: PlatformAdminRoute,
+  validateSearch: (search) => emptySearchSchema.parse(search),
 });
 
 const publicProposalStatusRoute = createRoute({
@@ -262,6 +266,7 @@ const routeTree = rootRoute.addChildren([
   contractsRoute,
   automationsRoute,
   settingsRoute,
+  platformAdminRoute,
   publicProposalStatusRoute,
   publicClientStatusRoute,
 ]);

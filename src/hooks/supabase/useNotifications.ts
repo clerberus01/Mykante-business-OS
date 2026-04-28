@@ -395,7 +395,7 @@ export function useSupabaseNotifications() {
     loading: notificationQuery.isLoading || notificationQuery.isFetching || setChannelEnabledMutation.isPending,
     setChannelEnabled,
     refreshNotifications: async () => {
-      await notificationQuery.refetch();
+      await queryClient.fetchQuery({ queryKey: notificationsQueryKey, queryFn: loadNotificationState });
     },
   };
 }

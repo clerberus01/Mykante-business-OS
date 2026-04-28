@@ -1,8 +1,8 @@
-type AuthAttemptKind = 'sign-in' | 'initial-admin';
+type AuthAttemptKind = 'sign-in' | 'sign-up';
 
 const LIMITS: Record<AuthAttemptKind, { maxAttempts: number; windowMs: number }> = {
   'sign-in': { maxAttempts: 5, windowMs: 60_000 },
-  'initial-admin': { maxAttempts: 3, windowMs: 10 * 60_000 },
+  'sign-up': { maxAttempts: 3, windowMs: 10 * 60_000 },
 };
 
 const attempts = new Map<string, { count: number; resetAt: number }>();
