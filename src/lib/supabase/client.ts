@@ -10,6 +10,8 @@ export function getSupabaseBrowserClient() {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
+        flowType: 'pkce',
+        storageKey: 'mykante-business-os-auth',
       },
     });
   }

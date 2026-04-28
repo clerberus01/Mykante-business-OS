@@ -45,11 +45,14 @@ export function useSupabaseClients() {
 
   const addClientMutation = useMutation({
     mutationFn: async (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) => {
-      if (!repository) return;
-      await repository.createClient(client);
+      if (!repository) return undefined;
+      return repository.createClient(client);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.crm.root(organizationId) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.crm.root(organizationId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
+      ]);
     },
   });
 
@@ -60,7 +63,10 @@ export function useSupabaseClients() {
       await repository.softDeleteClient(id);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.crm.root(organizationId) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.crm.root(organizationId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
+      ]);
     },
   });
 
@@ -70,7 +76,10 @@ export function useSupabaseClients() {
       await repository.updateClient(id, data);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.crm.root(organizationId) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.crm.root(organizationId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
+      ]);
     },
   });
 

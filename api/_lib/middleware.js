@@ -140,7 +140,7 @@ export function withApiMiddleware(handler, options = {}) {
       try {
         context = await getAuthenticatedContext(request);
       } catch (error) {
-        return sendJson(response, 401, {
+        return sendJson(response, error?.statusCode || 401, {
           error: error instanceof Error ? error.message : 'Unauthorized.',
         });
       }

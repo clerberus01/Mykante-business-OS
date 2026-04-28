@@ -1,12 +1,8 @@
 import { sendJson } from '../_lib/auth.js';
 import { withApiMiddleware } from '../_lib/middleware.js';
-import { readJsonBody } from '../_lib/request.js';
 import { getSupabaseAdminClient } from '../_lib/supabaseAdmin.js';
 import { isAuthorizedClientEmail, mapPublicClientStatus } from '../_lib/clientStatus.js';
-
-function isUuidLike(value) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-}
+import { getValidationErrorPayload, publicStatusRequestSchema, readValidatedJsonBody } from '../_lib/validation.js';
 
 async function handler(request, response) {
   if (request.method !== 'POST') {
@@ -14,13 +10,7 @@ async function handler(request, response) {
   }
 
   try {
-    const body = await readJsonBody(request);
-    const token = typeof body.token === 'string' ? body.token.trim() : '';
-    const email = typeof body.email === 'string' ? body.email.trim() : '';
-
-    if (!isUuidLike(token) || !email) {
-      return sendJson(response, 400, { error: 'Informe o link e o email para consultar o pedido.' });
-    }
+    const { token, email } = await readValidatedJsonBody(request, publicStatusRequestSchema);
 
     const supabase = getSupabaseAdminClient();
     const { data: client, error: clientError } = await supabase
@@ -43,8 +33,21 @@ async function handler(request, response) {
       });
     }
 
-    const [{ data: proposals, error: proposalsError }, { data: deals, error: dealsError }] =
+    const [
+      { data: organization, error: organizationError },
+      { data: proposals, error: proposalsError },
+      { data: deals, error: dealsError },
+      { data: projects, error: projectsError },
+      { data: transactions, error: transactionsError },
+      { data: documents, error: documentsError },
+      { data: contracts, error: contractsError },
+    ] =
       await Promise.all([
+        supabase
+          .from('organizations')
+          .select('name, metadata, default_locale, default_currency, portal_enabled')
+          .eq('id', client.organization_id)
+          .maybeSingle(),
         supabase
           .from('proposals')
           .select('id, title, value, status, description, valid_until, updated_at')
@@ -58,10 +61,51 @@ async function handler(request, response) {
           .eq('organization_id', client.organization_id)
           .eq('client_id', client.id)
           .order('updated_at', { ascending: false }),
+        supabase
+          .from('projects')
+          .select('id, name, status, progress, deadline, updated_at')
+          .eq('organization_id', client.organization_id)
+          .eq('client_id', client.id)
+          .is('deleted_at', null)
+          .order('updated_at', { ascending: false }),
+        supabase
+          .from('transactions')
+          .select('id, description, amount, status, due_date, payment_url')
+          .eq('organization_id', client.organization_id)
+          .eq('client_id', client.id)
+          .eq('type', 'income')
+          .is('deleted_at', null)
+          .order('due_date', { ascending: false })
+          .limit(20),
+        supabase
+          .from('documents')
+          .select('id, display_name, signature_status, signature_url, updated_at')
+          .eq('organization_id', client.organization_id)
+          .eq('client_id', client.id)
+          .is('deleted_at', null)
+          .order('updated_at', { ascending: false })
+          .limit(20),
+        supabase
+          .from('contracts')
+          .select('id, title, status, amount, currency, starts_at, ends_at, auto_renew, next_renewal_at')
+          .eq('organization_id', client.organization_id)
+          .eq('client_id', client.id)
+          .is('deleted_at', null)
+          .order('updated_at', { ascending: false }),
       ]);
 
+    if (organizationError) throw organizationError;
+    if (organization?.portal_enabled === false) {
+      return sendJson(response, 404, {
+        error: 'Este portal esta indisponivel no momento.',
+      });
+    }
     if (proposalsError) throw proposalsError;
     if (dealsError) throw dealsError;
+    if (projectsError) throw projectsError;
+    if (transactionsError) throw transactionsError;
+    if (documentsError) throw documentsError;
+    if (contractsError) throw contractsError;
 
     await supabase
       .from('clients')
@@ -69,10 +113,23 @@ async function handler(request, response) {
       .eq('id', client.id);
 
     return sendJson(response, 200, {
-      client: mapPublicClientStatus(client, proposals ?? [], deals ?? []),
+      client: mapPublicClientStatus(
+        client,
+        organization,
+        proposals ?? [],
+        deals ?? [],
+        projects ?? [],
+        transactions ?? [],
+        documents ?? [],
+        contracts ?? [],
+      ),
     });
   } catch (error) {
     console.error('Public client status error:', error);
+    if (error?.statusCode === 400) {
+      return sendJson(response, 400, getValidationErrorPayload(error, 'Informe o link e o email para consultar o pedido.'));
+    }
+
     return sendJson(response, 500, {
       error: 'Nao foi possivel consultar o pedido agora.',
     });

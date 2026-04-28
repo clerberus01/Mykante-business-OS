@@ -3,6 +3,7 @@ export {
   useSupabaseProjects,
   useSupabaseMilestones,
   useSupabaseTasks,
+  useSupabaseProjectTeam,
   useSupabaseProjectActivity,
 } from './useProjects';
 export { useSupabaseTransactions } from './useFinance';
@@ -21,3 +22,5 @@ export {
 } from './useCalendar';
 export { useSupabaseSettings } from './useSettings';
 export { useClientAvatarUpload } from './useClientAvatarUpload';
+export { useSupabaseAutomations } from './useAutomations';
+export { useSupabaseContracts } from './useContracts';

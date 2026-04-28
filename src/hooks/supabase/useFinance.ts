@@ -70,7 +70,10 @@ export function useSupabaseTransactions() {
       await repository.createTransaction(transaction);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: transactionsQueryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: transactionsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
+      ]);
     },
   });
 
@@ -80,7 +83,10 @@ export function useSupabaseTransactions() {
       await repository.updateTransaction(id, data);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: transactionsQueryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: transactionsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
+      ]);
     },
   });
   const createCategoryMutation = useMutation({
@@ -102,7 +108,12 @@ export function useSupabaseTransactions() {
       if (!repository) return undefined;
       return repository.generatePaymentRequest(transaction, method);
     },
-    onSuccess: async () => queryClient.invalidateQueries({ queryKey: transactionsQueryKey }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: transactionsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
+      ]);
+    },
   });
   const importStatementMutation = useMutation({
     mutationFn: async ({ fileName, content, userId }: { fileName: string; content: string; userId?: string }) => {
@@ -113,6 +124,7 @@ export function useSupabaseTransactions() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: transactionsQueryKey }),
         queryClient.invalidateQueries({ queryKey: bankLinesQueryKey }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
       ]);
     },
   });

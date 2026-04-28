@@ -13,9 +13,9 @@ export function formatDate(date: Date | string | number) {
   }).format(new Date(date));
 }
 
-export function formatCurrency(value: number) {
-  return new Intl.NumberFormat('pt-BR', {
+export function formatCurrency(value: number, currency = 'BRL', locale = 'pt-BR') {
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: 'BRL',
+    currency,
   }).format(value);
 }

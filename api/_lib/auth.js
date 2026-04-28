@@ -10,6 +10,26 @@ function getBearerToken(request) {
   return header.slice('Bearer '.length).trim();
 }
 
+function decodeBase64Url(value) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), '=');
+  return Buffer.from(padded, 'base64').toString('utf8');
+}
+
+function getJwtPayload(token) {
+  const [, payload] = token.split('.');
+
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(decodeBase64Url(payload));
+  } catch {
+    return null;
+  }
+}
+
 function getRequestedOrganizationId(request) {
   const header = request.headers['x-organization-id'] || request.headers['X-Organization-Id'];
 
@@ -25,6 +45,14 @@ export async function getAuthenticatedContext(request) {
 
   if (!token) {
     throw new Error('Missing bearer token.');
+  }
+
+  const tokenPayload = getJwtPayload(token);
+
+  if (tokenPayload?.aal !== 'aal2') {
+    const error = new Error('Multi-factor authentication is required.');
+    error.statusCode = 403;
+    throw error;
   }
 
   const supabase = getSupabaseAdminClient();
@@ -81,6 +109,20 @@ export async function getAuthenticatedContext(request) {
     organizationId: membership.organization_id,
     role: membership.role,
   };
+}
+
+export function hasOrganizationRole(authContext, allowedRoles) {
+  return Boolean(authContext?.role && allowedRoles.includes(authContext.role));
+}
+
+export function requireOrganizationRole(authContext, allowedRoles) {
+  if (!hasOrganizationRole(authContext, allowedRoles)) {
+    const error = new Error('Insufficient organization role.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  return authContext;
 }
 
 export function sendJson(response, status, body) {

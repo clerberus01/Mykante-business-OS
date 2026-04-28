@@ -16,6 +16,8 @@ export const queryKeys = {
       ['projects', organizationId, 'milestones', projectId] as const,
     tasks: (organizationId: string | null, projectId: string | null, userId: string) =>
       ['projects', organizationId, 'tasks', projectId, userId] as const,
+    team: (organizationId: string | null, projectId: string | null) =>
+      ['projects', organizationId, 'team', projectId] as const,
     activity: (organizationId: string | null, projectId: string | null) =>
       ['projects', organizationId, 'activity', projectId] as const,
   },
@@ -32,6 +34,7 @@ export const queryKeys = {
   },
   whatsapp: {
     conversations: (organizationId: string | null) => ['whatsapp', organizationId, 'conversations'] as const,
+    templates: (organizationId: string | null) => ['whatsapp', organizationId, 'templates'] as const,
     messages: (organizationId: string | null, conversationId: string) =>
       ['whatsapp', organizationId, 'messages', conversationId] as const,
   },
@@ -45,5 +48,9 @@ export const queryKeys = {
     root: (organizationId: string | null) => ['calendar', organizationId] as const,
     mfa: (userId: string) => ['settings', userId, 'mfa'] as const,
     apiHealth: (organizationId: string | null) => ['settings', organizationId, 'api-health'] as const,
+  },
+  automations: {
+    rules: (organizationId: string | null) => ['automations', organizationId, 'rules'] as const,
+    runs: (organizationId: string | null) => ['automations', organizationId, 'runs'] as const,
   },
 };

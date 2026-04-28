@@ -6,10 +6,12 @@ import {
   Wallet,
   MessageSquare,
   FileText,
+  FileSignature,
   Settings,
   LayoutDashboard,
   Search,
   Plus,
+  Workflow,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -20,6 +22,7 @@ import {
   useSupabaseProjects,
 } from '../hooks/supabase';
 import { setPendingNavigationIntent } from '../lib/navigation';
+import { getBrandingStyle, normalizeBranding } from '../lib/branding';
 
 interface NavItemProps {
   icon: React.ElementType;
@@ -44,7 +47,8 @@ const NavItem: React.FC<NavItemProps> = ({ icon: Icon, label, id, active, onClic
 );
 
 const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string; setActiveTab: (tab: string) => void }) => {
-  const { user } = useAuth();
+  const { user, organization } = useAuth();
+  const branding = normalizeBranding(organization?.branding);
   const fallbackInitial = (user?.displayName || user?.email || 'M').charAt(0).toUpperCase();
   const navItems = [
     { id: 'dashboard', label: 'Painel', icon: LayoutDashboard },
@@ -54,12 +58,16 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string; setActiveTab:
     { id: 'finance', label: 'Financeiro', icon: Wallet },
     { id: 'messages', label: 'Comunicacao', icon: MessageSquare },
     { id: 'docs', label: 'Documentos', icon: FileText },
+    { id: 'contracts', label: 'Contratos', icon: FileSignature },
+    { id: 'automations', label: 'Automations', icon: Workflow },
   ];
 
   return (
     <aside className="w-16 flex flex-col items-center py-4 bg-os-dark border-r border-os-dark shadow-xl fixed h-screen left-0 top-0 z-50">
       <div className="w-10 h-10 bg-brand rounded flex items-center justify-center mb-8 font-bold text-white text-xl shadow-lg shadow-brand/20 overflow-hidden">
-        {user?.avatarUrl ? (
+        {branding.logoUrl ? (
+          <img src={branding.logoUrl} alt={branding.appName} className="w-full h-full object-cover" />
+        ) : user?.avatarUrl ? (
           <img src={user.avatarUrl} alt="Foto de perfil" className="w-full h-full object-cover" />
         ) : (
           fallbackInitial
@@ -92,7 +100,8 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string; setActiveTab:
 };
 
 const Header = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
-  const { user } = useAuth();
+  const { user, organization } = useAuth();
+  const branding = normalizeBranding(organization?.branding);
   const { clients } = useSupabaseClients();
   const { projects } = useSupabaseProjects();
   const { documents } = useSupabaseDocuments();
@@ -219,7 +228,7 @@ const Header = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
   return (
     <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0 z-40 fixed top-0 right-0 left-16">
       <div className="flex items-center gap-4">
-        <h1 className="text-sm font-bold tracking-tight uppercase text-os-text">Mykante Business OS</h1>
+        <h1 className="text-sm font-bold tracking-tight uppercase text-os-text">{branding.appName}</h1>
         <div className="h-4 w-[1px] bg-gray-300"></div>
         <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
           <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
@@ -328,8 +337,9 @@ export default function Layout({
   activeTab: string;
   setActiveTab: (tab: string) => void;
 }) {
+  const { organization } = useAuth();
   return (
-    <div className="h-screen bg-os-bg text-os-text font-sans flex overflow-hidden">
+    <div className="h-screen bg-os-bg text-os-text font-sans flex overflow-hidden" style={getBrandingStyle(organization?.branding)}>
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       <div className="flex-1 flex flex-col min-w-0 ml-16">
         <Header setActiveTab={setActiveTab} />

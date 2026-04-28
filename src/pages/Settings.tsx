@@ -19,14 +19,16 @@ import {
   Eraser,
   RefreshCw,
   Upload,
+  Palette,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { cn } from '../lib/utils';
 import { useSupabaseNotifications, useSupabasePrivacy, useSupabaseSettings } from '../hooks/supabase';
+import { defaultBranding, normalizeBranding } from '../lib/branding';
 
 type TestChannel = 'email' | 'push' | null;
 type PrivacyAction = 'export' | 'deletion' | 'anonymization' | null;
-type SettingsSection = 'profile' | 'notifications' | 'security' | 'database' | 'api';
+type SettingsSection = 'profile' | 'branding' | 'notifications' | 'security' | 'database' | 'api';
 
 async function sendTestNotification(accessToken: string, organizationId: string | null, channel: 'email' | 'push') {
   const endpoint = channel === 'email' ? '/api/notifications/email' : '/api/notifications/push';
@@ -88,7 +90,18 @@ function Toggle({
 }
 
 export default function Settings() {
-  const { user, signOut, session, organization, role, isAdmin, refreshAuth } = useAuth();
+  const {
+    user,
+    signOut,
+    session,
+    organization,
+    role,
+    isAdmin,
+    isPlatformAdmin,
+    canClaimInitialPlatformAdmin,
+    claimInitialPlatformAdmin,
+    refreshAuth,
+  } = useAuth();
   const { preferences, pushStatus, summary, loading, setChannelEnabled } = useSupabaseNotifications();
   const { requests, retentionPolicies, organizationPrivacy, createDataRequest, refreshPrivacy } = useSupabasePrivacy();
   const {
@@ -111,11 +124,21 @@ export default function Settings() {
   const [avatarUrl, setAvatarUrl] = useState('');
   const [organizationName, setOrganizationName] = useState('');
   const [lgpdContactEmail, setLgpdContactEmail] = useState('');
+  const [appName, setAppName] = useState(defaultBranding.appName);
+  const [logoUrl, setLogoUrl] = useState('');
+  const [primaryColor, setPrimaryColor] = useState(defaultBranding.primaryColor);
+  const [darkColor, setDarkColor] = useState(defaultBranding.darkColor);
+  const [backgroundColor, setBackgroundColor] = useState(defaultBranding.backgroundColor);
+  const [textColor, setTextColor] = useState(defaultBranding.textColor);
+  const [portalTitle, setPortalTitle] = useState(defaultBranding.portalTitle);
+  const [portalSubtitle, setPortalSubtitle] = useState(defaultBranding.portalSubtitle);
   const [apiHealth, setApiHealth] = useState<'idle' | 'checking' | 'ok' | 'error'>('idle');
   const [apiHealthMessage, setApiHealthMessage] = useState('');
+  const [claimingPlatformAdmin, setClaimingPlatformAdmin] = useState(false);
 
   const sections: { id: SettingsSection; label: string; icon: typeof User }[] = [
     { id: 'profile', label: 'Meu Perfil', icon: User },
+    { id: 'branding', label: 'Marca & Portal', icon: Palette },
     { id: 'notifications', label: 'Notificações', icon: Bell },
     { id: 'security', label: 'Segurança', icon: Shield },
     { id: 'database', label: 'Banco de Dados', icon: Database },
@@ -133,6 +156,18 @@ export default function Settings() {
   }, [organization?.name, organizationPrivacy?.lgpdContactEmail, organizationPrivacy?.name]);
 
   useEffect(() => {
+    const branding = normalizeBranding(organization?.branding);
+    setAppName(branding.appName);
+    setLogoUrl(branding.logoUrl);
+    setPrimaryColor(branding.primaryColor);
+    setDarkColor(branding.darkColor);
+    setBackgroundColor(branding.backgroundColor);
+    setTextColor(branding.textColor);
+    setPortalTitle(branding.portalTitle);
+    setPortalSubtitle(branding.portalSubtitle);
+  }, [organization?.branding]);
+
+  useEffect(() => {
     if (activeSection === 'security') {
       void loadMfaStatus();
     }
@@ -142,7 +177,22 @@ export default function Settings() {
     if (!user) return;
 
     try {
-      await saveProfile({ fullName, avatarUrl, organizationName, lgpdContactEmail });
+      await saveProfile({
+        fullName,
+        avatarUrl,
+        organizationName,
+        lgpdContactEmail,
+        branding: {
+          appName,
+          logoUrl,
+          primaryColor,
+          darkColor,
+          backgroundColor,
+          textColor,
+          portalTitle,
+          portalSubtitle,
+        },
+      });
       if (organization?.id && isAdmin) {
         await refreshPrivacy();
       }
@@ -158,6 +208,15 @@ export default function Settings() {
     setAvatarUrl(user?.avatarUrl || '');
     setOrganizationName(organizationPrivacy?.name || organization?.name || '');
     setLgpdContactEmail(organizationPrivacy?.lgpdContactEmail || '');
+    const branding = normalizeBranding(organization?.branding);
+    setAppName(branding.appName);
+    setLogoUrl(branding.logoUrl);
+    setPrimaryColor(branding.primaryColor);
+    setDarkColor(branding.darkColor);
+    setBackgroundColor(branding.backgroundColor);
+    setTextColor(branding.textColor);
+    setPortalTitle(branding.portalTitle);
+    setPortalSubtitle(branding.portalSubtitle);
   };
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -199,6 +258,20 @@ export default function Settings() {
     } catch (error) {
       console.error('Password reset request failed:', error);
       window.alert('Não foi possível enviar o e-mail de redefinição.');
+    }
+  };
+
+  const handleClaimPlatformAdmin = async () => {
+    setClaimingPlatformAdmin(true);
+
+    try {
+      await claimInitialPlatformAdmin();
+      window.alert('Admin geral da plataforma ativado para este perfil.');
+    } catch (error) {
+      console.error('Platform admin claim failed:', error);
+      window.alert('Não foi possível ativar o admin geral. Verifique MFA e se já existe outro admin da plataforma.');
+    } finally {
+      setClaimingPlatformAdmin(false);
     }
   };
 
@@ -436,6 +509,111 @@ export default function Settings() {
             </section>
           )}
 
+          {activeSection === 'branding' && (
+            <section className="bg-white rounded border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-50 bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                Personalização da Empresa
+              </div>
+              <div className="p-6 space-y-6">
+                {!isAdmin && (
+                  <div className="p-3 rounded bg-amber-50 border border-amber-100 text-[10px] font-bold text-amber-700 uppercase tracking-widest">
+                    Apenas administradores podem alterar a identidade da organização.
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Nome no Sistema</label>
+                    <input
+                      value={appName}
+                      onChange={(event) => setAppName(event.target.value)}
+                      disabled={!isAdmin}
+                      className="w-full bg-gray-50 border border-gray-100 rounded px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-brand outline-none transition-all disabled:opacity-60"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-gray-400">URL do Logo</label>
+                    <input
+                      value={logoUrl}
+                      onChange={(event) => setLogoUrl(event.target.value)}
+                      disabled={!isAdmin}
+                      placeholder="https://..."
+                      className="w-full bg-gray-50 border border-gray-100 rounded px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-brand outline-none transition-all disabled:opacity-60"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {[
+                    ['Cor Principal', primaryColor, setPrimaryColor],
+                    ['Cor Escura', darkColor, setDarkColor],
+                    ['Fundo', backgroundColor, setBackgroundColor],
+                    ['Texto', textColor, setTextColor],
+                  ].map(([label, value, setter]) => (
+                    <label key={label as string} className="space-y-2">
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400">{label as string}</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={value as string}
+                          disabled={!isAdmin}
+                          onChange={(event) => (setter as React.Dispatch<React.SetStateAction<string>>)(event.target.value)}
+                          className="w-10 h-9 rounded border border-gray-100 bg-white disabled:opacity-60"
+                        />
+                        <input
+                          value={value as string}
+                          disabled={!isAdmin}
+                          onChange={(event) => (setter as React.Dispatch<React.SetStateAction<string>>)(event.target.value)}
+                          className="min-w-0 flex-1 bg-gray-50 border border-gray-100 rounded px-2 py-2 text-[10px] font-mono uppercase focus:ring-1 focus:ring-brand outline-none transition-all disabled:opacity-60"
+                        />
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Título do Portal do Cliente</label>
+                    <input
+                      value={portalTitle}
+                      onChange={(event) => setPortalTitle(event.target.value)}
+                      disabled={!isAdmin}
+                      className="w-full bg-gray-50 border border-gray-100 rounded px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-brand outline-none transition-all disabled:opacity-60"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Subtítulo do Portal</label>
+                    <input
+                      value={portalSubtitle}
+                      onChange={(event) => setPortalSubtitle(event.target.value)}
+                      disabled={!isAdmin}
+                      className="w-full bg-gray-50 border border-gray-100 rounded px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-brand outline-none transition-all disabled:opacity-60"
+                    />
+                  </div>
+                </div>
+
+                <div
+                  className="p-4 rounded border border-gray-100 flex items-center gap-3"
+                  style={{
+                    backgroundColor,
+                    color: textColor,
+                  }}
+                >
+                  <div
+                    className="w-10 h-10 rounded flex items-center justify-center text-white font-black overflow-hidden"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    {logoUrl ? <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" /> : appName.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em]">{appName || defaultBranding.appName}</p>
+                    <p className="text-[10px] opacity-70">{portalTitle || defaultBranding.portalTitle}</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
           {activeSection === 'notifications' && (
             <section className="bg-white rounded border border-gray-100 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-gray-50 bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-400">
@@ -581,6 +759,38 @@ export default function Settings() {
                     Enviar Link
                   </button>
                 </div>
+
+                <div className="pt-4 border-t border-gray-50">
+                  <div className="flex items-center justify-between gap-4 py-2">
+                    <div>
+                      <p className="text-xs font-bold text-os-text">Admin Geral da Plataforma</p>
+                      <p className="text-[10px] text-gray-400">
+                        {isPlatformAdmin
+                          ? 'Este perfil tem permissões administrativas do sistema.'
+                          : 'Donos e admins de empresas não recebem acesso ao sistema por padrão.'}
+                      </p>
+                    </div>
+                    {isPlatformAdmin ? (
+                      <span className="px-3 py-1.5 rounded bg-green-50 text-green-700 text-[9px] font-black uppercase tracking-widest">
+                        Ativo
+                      </span>
+                    ) : canClaimInitialPlatformAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleClaimPlatformAdmin()}
+                        disabled={claimingPlatformAdmin}
+                        className="px-3 py-1.5 bg-os-dark text-white text-[9px] font-bold uppercase tracking-widest rounded hover:bg-brand transition-all disabled:opacity-40 flex items-center gap-2"
+                      >
+                        {claimingPlatformAdmin ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
+                        Ativar
+                      </button>
+                    ) : (
+                      <span className="px-3 py-1.5 rounded bg-gray-50 text-gray-400 text-[9px] font-black uppercase tracking-widest">
+                        Restrito
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </section>
           )}
@@ -723,7 +933,7 @@ export default function Settings() {
             </section>
           )}
 
-          {activeSection === 'profile' && (
+          {(activeSection === 'profile' || activeSection === 'branding') && (
             <div className="flex justify-end gap-3">
               <button
                 type="button"

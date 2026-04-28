@@ -36,6 +36,12 @@ type ClientRecord = {
   public_token?: string | null;
   public_status_enabled?: boolean | null;
   public_status_closed_at?: string | null;
+  source?: string | null;
+  created_from_mobile?: boolean | null;
+  whatsapp_opt_in?: boolean | null;
+  responsible_id?: string | null;
+  segment?: string | null;
+  custom_fields?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 };
@@ -107,6 +113,12 @@ const clientRecordSchema = z.object({
   public_token: z.string().uuid().nullable().optional(),
   public_status_enabled: z.boolean().nullable().optional(),
   public_status_closed_at: z.string().nullable().optional(),
+  source: z.string().nullable().optional(),
+  created_from_mobile: z.boolean().nullable().optional(),
+  whatsapp_opt_in: z.boolean().nullable().optional(),
+  responsible_id: z.string().uuid().nullable().optional(),
+  segment: z.string().nullable().optional(),
+  custom_fields: z.record(z.string(), z.unknown()).nullable().optional(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -180,6 +192,12 @@ function mapClientRecord(record: ClientRecord): Client {
     publicToken: record.public_token ?? undefined,
     publicStatusEnabled: record.public_status_enabled ?? undefined,
     publicStatusClosedAt: record.public_status_closed_at ? toIsoString(record.public_status_closed_at) : undefined,
+    source: record.source ?? 'web',
+    createdFromMobile: record.created_from_mobile ?? false,
+    whatsappOptIn: record.whatsapp_opt_in ?? true,
+    responsibleId: record.responsible_id ?? undefined,
+    segment: record.segment ?? undefined,
+    customFields: record.custom_fields ?? undefined,
     createdAt: toIsoString(record.created_at),
     updatedAt: toIsoString(record.updated_at),
   };
@@ -243,6 +261,12 @@ function mapClientInput(client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>, 
     tags: client.tags,
     attention: client.attention,
     origin: client.origin,
+    source: client.source ?? 'web',
+    created_from_mobile: client.createdFromMobile ?? client.source === 'mobile',
+    whatsapp_opt_in: client.whatsappOptIn ?? true,
+    responsible_id: client.responsibleId ?? null,
+    segment: client.segment ?? null,
+    custom_fields: client.customFields ?? {},
   };
 }
 
@@ -279,10 +303,12 @@ export class SupabaseClientRepository extends SupabaseRepository {
   }
 
   async createClient(client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) {
-    await this.unwrap(
+    const rows = await this.unwrap(
       this.supabase.from('clients').insert(mapClientInput(client, this.organizationId)).select('id'),
       'Nao foi possivel criar o cliente.',
     );
+
+    return (rows as Array<{ id: string }>)[0]?.id;
   }
 
   async updateClient(id: string, data: Partial<Client>) {
@@ -315,6 +341,12 @@ export class SupabaseClientRepository extends SupabaseRepository {
     if (data.tags !== undefined) payload.tags = data.tags;
     if (data.attention !== undefined) payload.attention = data.attention;
     if (data.origin !== undefined) payload.origin = data.origin;
+    if (data.source !== undefined) payload.source = data.source;
+    if (data.createdFromMobile !== undefined) payload.created_from_mobile = data.createdFromMobile;
+    if (data.whatsappOptIn !== undefined) payload.whatsapp_opt_in = data.whatsappOptIn;
+    if (data.responsibleId !== undefined) payload.responsible_id = data.responsibleId ?? null;
+    if (data.segment !== undefined) payload.segment = data.segment ?? null;
+    if (data.customFields !== undefined) payload.custom_fields = data.customFields ?? {};
     if (data.publicStatusEnabled !== undefined) payload.public_status_enabled = data.publicStatusEnabled;
     if (data.publicStatusClosedAt !== undefined) {
       payload.public_status_closed_at = data.publicStatusClosedAt ?? null;

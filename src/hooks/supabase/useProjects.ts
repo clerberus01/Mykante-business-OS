@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Milestone, Project, ProjectTemplate, Task } from '../../types';
+import type { Milestone, Project, ProjectPerformanceReview, ProjectTemplate, ProjectTimeEntry, Task } from '../../types';
 import { createProjectRepository, toDataLayerError } from '../../services';
 import { useRepositoryContext } from './useRepositoryContext';
 import { queryKeys } from './queryKeys';
@@ -64,7 +64,10 @@ export function useSupabaseProjects() {
       return repository.createProjectFromTemplate(project, templateId);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: projectsQueryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: projectsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
+      ]);
     },
   });
 
@@ -74,7 +77,10 @@ export function useSupabaseProjects() {
       await repository.updateProject(id, data);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: projectsQueryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: projectsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
+      ]);
     },
   });
 
@@ -84,7 +90,10 @@ export function useSupabaseProjects() {
       await repository.softDeleteProject(id);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: projectsQueryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: projectsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
+      ]);
     },
   });
 
@@ -256,6 +265,7 @@ export function useSupabaseTasks(projectId: string | null) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
         queryClient.invalidateQueries({ queryKey: queryKeys.projects.root(organizationId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
       ]);
       await queryClient.refetchQueries({ queryKey: tasksQueryKey });
     },
@@ -270,6 +280,7 @@ export function useSupabaseTasks(projectId: string | null) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
         queryClient.invalidateQueries({ queryKey: queryKeys.projects.root(organizationId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
       ]);
     },
   });
@@ -298,6 +309,7 @@ export function useSupabaseTasks(projectId: string | null) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
         queryClient.invalidateQueries({ queryKey: queryKeys.projects.root(organizationId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
       ]);
       await queryClient.refetchQueries({ queryKey: tasksQueryKey });
     },
@@ -322,6 +334,7 @@ export function useSupabaseTasks(projectId: string | null) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
         queryClient.invalidateQueries({ queryKey: queryKeys.projects.root(organizationId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
       ]);
     },
   });
@@ -345,6 +358,7 @@ export function useSupabaseTasks(projectId: string | null) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: tasksQueryKey }),
         queryClient.invalidateQueries({ queryKey: queryKeys.crm.transactions(organizationId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
       ]);
     },
   });
@@ -369,6 +383,88 @@ export function useSupabaseTasks(projectId: string | null) {
     startTimer: startTimerMutation.mutateAsync,
     stopTimer: (entryId: string, hourlyRate?: number) => stopTimerMutation.mutateAsync({ entryId, hourlyRate }),
     refreshTasks: loadTasks,
+  };
+}
+
+export function useSupabaseProjectTeam(projectId: string | null) {
+  const { supabase, organizationId, currentUserId } = useRepositoryContext();
+  const repository = useMemo(
+    () => (organizationId ? createProjectRepository(supabase, organizationId) : null),
+    [organizationId, supabase],
+  );
+  const queryClient = useQueryClient();
+  const teamQueryKey = useMemo(() => queryKeys.projects.team(organizationId, projectId), [organizationId, projectId]);
+  const tasksQueryKeyPrefix = useMemo(
+    () => queryKeys.projects.tasks(organizationId, projectId, currentUserId),
+    [currentUserId, organizationId, projectId],
+  );
+
+  const teamQuery = useQuery({
+    queryKey: teamQueryKey,
+    enabled: Boolean(repository && projectId),
+    queryFn: async () => {
+      if (!repository || !projectId) {
+        return {
+          timeEntries: [] as ProjectTimeEntry[],
+          performanceReviews: [] as ProjectPerformanceReview[],
+        };
+      }
+
+      const [timeEntries, performanceReviews] = await Promise.all([
+        repository.listProjectTimeEntries(projectId),
+        repository.listPerformanceReviews(projectId),
+      ]);
+
+      return { timeEntries, performanceReviews };
+    },
+  });
+
+  const updateTimeEntryApprovalMutation = useMutation({
+    mutationFn: async ({
+      entryId,
+      approvalStatus,
+      rejectionReason,
+    }: {
+      entryId: string;
+      approvalStatus: NonNullable<ProjectTimeEntry['approvalStatus']>;
+      rejectionReason?: string;
+    }) => {
+      if (!repository || !projectId) return;
+      await repository.updateTimeEntryApproval(projectId, entryId, approvalStatus, rejectionReason);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: teamQueryKey }),
+        queryClient.invalidateQueries({ queryKey: tasksQueryKeyPrefix }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
+      ]);
+    },
+  });
+
+  const createPerformanceReviewMutation = useMutation({
+    mutationFn: async (review: Omit<ProjectPerformanceReview, 'id' | 'projectId' | 'createdAt' | 'updatedAt'>) => {
+      if (!repository || !projectId) return;
+      await repository.createPerformanceReview(projectId, review);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: teamQueryKey });
+    },
+  });
+
+  const teamError = getQueryError(teamQuery.error, 'Falha ao carregar RH do projeto.');
+
+  if (teamError) {
+    console.warn('Supabase project team load failed:', teamError);
+  }
+
+  return {
+    timeEntries: teamQuery.data?.timeEntries ?? [],
+    performanceReviews: teamQuery.data?.performanceReviews ?? [],
+    loading: teamQuery.isLoading,
+    error: teamError,
+    hasError: Boolean(teamError),
+    updateTimeEntryApproval: updateTimeEntryApprovalMutation.mutateAsync,
+    createPerformanceReview: createPerformanceReviewMutation.mutateAsync,
   };
 }
 

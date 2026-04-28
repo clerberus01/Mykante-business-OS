@@ -1,12 +1,8 @@
 import { sendJson } from '../_lib/auth.js';
 import { withApiMiddleware } from '../_lib/middleware.js';
-import { readJsonBody } from '../_lib/request.js';
 import { getSupabaseAdminClient } from '../_lib/supabaseAdmin.js';
 import { isAuthorizedClientEmail, mapPublicProposalStatus } from '../_lib/proposalStatus.js';
-
-function isUuidLike(value) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-}
+import { getValidationErrorPayload, publicStatusRequestSchema, readValidatedJsonBody } from '../_lib/validation.js';
 
 async function handler(request, response) {
   if (request.method !== 'POST') {
@@ -14,13 +10,7 @@ async function handler(request, response) {
   }
 
   try {
-    const body = await readJsonBody(request);
-    const token = typeof body.token === 'string' ? body.token.trim() : '';
-    const email = typeof body.email === 'string' ? body.email.trim() : '';
-
-    if (!isUuidLike(token) || !email) {
-      return sendJson(response, 400, { error: 'Informe o link e o email para consultar o pedido.' });
-    }
+    const { token, email } = await readValidatedJsonBody(request, publicStatusRequestSchema);
 
     const supabase = getSupabaseAdminClient();
     const { data: proposal, error } = await supabase
@@ -70,6 +60,10 @@ async function handler(request, response) {
     });
   } catch (error) {
     console.error('Public proposal status error:', error);
+    if (error?.statusCode === 400) {
+      return sendJson(response, 400, getValidationErrorPayload(error, 'Informe o link e o email para consultar o pedido.'));
+    }
+
     return sendJson(response, 500, {
       error: 'Nao foi possivel consultar o pedido agora.',
     });

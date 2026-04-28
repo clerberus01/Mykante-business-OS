@@ -9,10 +9,12 @@ import {
   Search,
   Send,
   Smartphone,
+  Tags,
+  UserPlus,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useSupabaseClients, useSupabaseWhatsapp } from '../hooks/supabase';
-import type { Client, WhatsappConversation, WhatsappMessage } from '../types';
+import type { Client, WhatsappMessage } from '../types';
 
 function formatMessageTime(timestamp?: number) {
   if (!timestamp) return '--:--';
@@ -54,20 +56,35 @@ function getMessageStatusLabel(message: WhatsappMessage) {
   return 'Recebida';
 }
 
+const conversationCategoryLabel = {
+  opportunity: 'Oportunidade',
+  support: 'Suporte',
+  billing: 'Cobranca',
+} as const;
+
+const conversationCategoryClassName = {
+  opportunity: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+  support: 'bg-blue-50 text-blue-700 border-blue-100',
+  billing: 'bg-amber-50 text-amber-700 border-amber-100',
+} as const;
+
 export default function Communications() {
-  const { clients, loading: clientsLoading } = useSupabaseClients();
+  const { clients, loading: clientsLoading, addClient, refreshClients } = useSupabaseClients();
   const {
     conversations,
     messagesByConversation,
     loading,
     sending,
+    templates,
     openClientConversation,
     loadMessages,
     markConversationRead,
     sendMessage,
+    linkConversationClient,
   } = useSupabaseWhatsapp();
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -157,10 +174,56 @@ export default function Communications() {
     setErrorMessage(null);
 
     try {
-      await sendMessage(activeConversation.id, nextMessage);
+      await sendMessage(activeConversation.id, nextMessage, selectedTemplateKey || undefined);
+      setSelectedTemplateKey('');
     } catch (error) {
       setMessage(nextMessage);
       setErrorMessage(error instanceof Error ? error.message : 'Falha ao enviar WhatsApp.');
+    }
+  };
+
+  const handleCreateClientFromConversation = async () => {
+    if (!activeConversation) return;
+
+    setErrorMessage(null);
+
+    try {
+      const clientId = await addClient({
+        personType: 'Física',
+        name: activeConversation.suggestedClientPayload?.name || activeConversation.contactName || activeConversation.phoneE164,
+        taxId: '',
+        email: '',
+        phone: activeConversation.suggestedClientPayload?.phone || activeConversation.phoneE164,
+        status: 'lead',
+        source: 'whatsapp',
+        whatsappOptIn: true,
+        address: {
+          street: '',
+          number: '',
+          complement: '',
+          zipCode: '',
+          neighborhood: '',
+          city: '',
+          state: '',
+        },
+        dueDay: 10,
+        tags: ['whatsapp'],
+        attention: activeConversation.suggestedClientPayload?.lastMessageBody
+          ? `Primeira mensagem WhatsApp: ${activeConversation.suggestedClientPayload.lastMessageBody}`
+          : '',
+        origin: 'WhatsApp',
+        customFields: {
+          whatsappConversationId: activeConversation.id,
+        },
+      });
+
+      if (clientId) {
+        await linkConversationClient({ conversationId: activeConversation.id, clientId });
+      }
+
+      await refreshClients();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Nao foi possivel criar o cliente pela conversa.');
     }
   };
 
@@ -176,7 +239,7 @@ export default function Communications() {
       <div className="w-80 flex flex-col border-r border-gray-100">
         <div className="p-4 border-b border-gray-50 bg-gray-50/50">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">WhatsApp</h3>
+            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Chat Unificado</h3>
             <div className="p-1.5 text-brand bg-brand/10 rounded">
               <Smartphone className="w-4 h-4" />
             </div>
@@ -230,6 +293,15 @@ export default function Communications() {
                       <p className="text-[10px] text-gray-400 truncate">
                         {conversation.lastMessageBody || getClientLabel(client)}
                       </p>
+                      <span
+                        className={cn(
+                          'mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[8px] font-bold uppercase tracking-[0.12em]',
+                          conversationCategoryClassName[conversation.category ?? 'opportunity'],
+                        )}
+                      >
+                        <Tags className="w-2.5 h-2.5" />
+                        {conversationCategoryLabel[conversation.category ?? 'opportunity']}
+                      </span>
                     </div>
                     {conversation.unreadCount > 0 && (
                       <div className="w-4 h-4 rounded-full bg-brand text-white text-[8px] font-bold flex items-center justify-center">
@@ -315,9 +387,30 @@ export default function Communications() {
             <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50/30">
               <div className="flex items-center justify-center">
                 <span className="px-3 py-1 bg-white border border-gray-100 rounded-full text-[9px] font-bold text-gray-300 uppercase tracking-widest shadow-sm">
-                  Canal WhatsApp
+                  Canal {activeConversation.channel ?? 'whatsapp'} - {conversationCategoryLabel[activeConversation.category ?? 'opportunity']}
                 </span>
               </div>
+
+              {!activeConversation.clientId && activeConversation.suggestedClientStatus === 'pending' && (
+                <div className="mx-auto max-w-lg bg-white border border-brand/10 rounded-lg shadow-sm p-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-os-text">
+                      Novo contato sem cadastro
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-1 truncate">
+                      {activeConversation.suggestedClientPayload?.phone || activeConversation.phoneE164}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleCreateClientFromConversation()}
+                    className="px-3 py-2 bg-os-dark text-white rounded text-[9px] font-black uppercase tracking-widest hover:bg-black transition-all flex items-center gap-2 shrink-0"
+                  >
+                    <UserPlus className="w-3 h-3" />
+                    Criar cliente
+                  </button>
+                </div>
+              )}
 
               {activeMessages.map((item) => (
                 <div
@@ -368,6 +461,28 @@ export default function Communications() {
                   {errorMessage}
                 </div>
               )}
+              <div className="mb-2 flex items-center gap-2">
+                <select
+                  value={selectedTemplateKey}
+                  onChange={(event) => {
+                    const templateKey = event.target.value;
+                    setSelectedTemplateKey(templateKey);
+                    const template = templates.find((item) => item.templateKey === templateKey);
+                    if (template) setMessage(template.bodyPreview);
+                  }}
+                  className="h-8 rounded border border-gray-100 bg-gray-50 px-3 text-[10px] font-bold outline-none"
+                >
+                  <option value="">Texto livre</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.templateKey}>
+                      {template.templateKey}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-gray-300">
+                  Templates oficiais aprovados pela Meta
+                </span>
+              </div>
               <div className="bg-gray-50 border border-gray-100 rounded-lg p-2 flex items-end gap-2 focus-within:border-brand focus-within:bg-white transition-all">
                 <textarea
                   value={message}

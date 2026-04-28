@@ -9,6 +9,10 @@ import {
   Share2,
   Trash2,
   Loader2,
+  PenLine,
+  ScanText,
+  GitCompare,
+  History,
 } from 'lucide-react';
 import { cn, formatDate } from '../lib/utils';
 import { useSupabaseDocuments } from '../hooks/supabase';
@@ -37,11 +41,23 @@ function getDocumentBadge(document: StoredDocument) {
 
 export default function Documents() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const { documents, loading, uploadDocument, deleteDocument, downloadDocument } = useSupabaseDocuments();
+  const versionInputRef = useRef<HTMLInputElement | null>(null);
+  const {
+    documents,
+    loading,
+    uploadDocument,
+    uploadNewVersion,
+    requestSignature,
+    runOcr,
+    loadVersions,
+    deleteDocument,
+    downloadDocument,
+  } = useSupabaseDocuments();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFolder, setActiveFolder] = useState<string>('Todos os Arquivos');
   const [isUploading, setIsUploading] = useState(false);
   const [busyDocumentId, setBusyDocumentId] = useState<string | null>(null);
+  const [versionTarget, setVersionTarget] = useState<StoredDocument | null>(null);
 
   React.useEffect(() => {
     const pendingIntent = getPendingNavigationIntent();
@@ -125,6 +141,100 @@ export default function Documents() {
     }
   };
 
+  const handleRequestSignature = async (document: StoredDocument) => {
+    const signerEmail = window.prompt('E-mail do assinante');
+
+    if (!signerEmail?.trim()) return;
+
+    setBusyDocumentId(document.id);
+
+    try {
+      await requestSignature({
+        document,
+        signerEmail: signerEmail.trim(),
+        signerName: window.prompt('Nome do assinante')?.trim() || null,
+        provider: window.prompt('Provider (internal_pdf, clicksign ou docusign)', 'internal_pdf')?.trim() || 'internal_pdf',
+      });
+      window.alert('Solicitacao de assinatura registrada.');
+    } catch (error) {
+      console.error('Document signature request failed:', error);
+      window.alert('Nao foi possivel solicitar assinatura.');
+    } finally {
+      setBusyDocumentId(null);
+    }
+  };
+
+  const handleRunOcr = async (document: StoredDocument) => {
+    setBusyDocumentId(document.id);
+
+    try {
+      await runOcr(document);
+      window.alert('OCR processado ou encaminhado para provider.');
+    } catch (error) {
+      console.error('Document OCR failed:', error);
+      window.alert('Nao foi possivel processar OCR.');
+    } finally {
+      setBusyDocumentId(null);
+    }
+  };
+
+  const handleVersionUploadClick = (document: StoredDocument) => {
+    setVersionTarget(document);
+    versionInputRef.current?.click();
+  };
+
+  const handleVersionSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!selectedFile || !versionTarget) return;
+
+    setBusyDocumentId(versionTarget.id);
+
+    try {
+      await uploadNewVersion({
+        document: versionTarget,
+        file: selectedFile,
+        changeSummary: window.prompt('Resumo das alteracoes desta versao')?.trim() || null,
+      });
+      window.alert('Nova versao registrada.');
+    } catch (error) {
+      console.error('Document version upload failed:', error);
+      window.alert('Nao foi possivel registrar nova versao.');
+    } finally {
+      setBusyDocumentId(null);
+      setVersionTarget(null);
+    }
+  };
+
+  const handleCompareVersions = async (document: StoredDocument) => {
+    setBusyDocumentId(document.id);
+
+    try {
+      const versions = await loadVersions(document.id);
+      const [current, previous] = versions;
+
+      if (!current || !previous) {
+        window.alert('Este documento ainda nao possui versoes suficientes para comparacao.');
+        return;
+      }
+
+      window.alert([
+        `Comparacao: ${document.displayName}`,
+        `Versao atual: v${current.versionNumber} - ${formatBytes(current.sizeBytes)} - ${formatDate(current.createdAt)}`,
+        `Versao anterior: v${previous.versionNumber} - ${formatBytes(previous.sizeBytes)} - ${formatDate(previous.createdAt)}`,
+        `Diferenca de tamanho: ${formatBytes(Math.abs(current.sizeBytes - previous.sizeBytes))}`,
+        current.changeSummary ? `Resumo atual: ${current.changeSummary}` : null,
+        previous.changeSummary ? `Resumo anterior: ${previous.changeSummary}` : null,
+      ].filter(Boolean).join('\n'));
+    } catch (error) {
+      console.error('Document version compare failed:', error);
+      window.alert('Nao foi possivel comparar versoes.');
+    } finally {
+      setBusyDocumentId(null);
+    }
+  };
+
   const handleDownloadDocument = async (document: StoredDocument) => {
     setBusyDocumentId(document.id);
 
@@ -159,6 +269,12 @@ export default function Documents() {
             type="file"
             className="hidden"
             onChange={handleFileSelection}
+          />
+          <input
+            ref={versionInputRef}
+            type="file"
+            className="hidden"
+            onChange={(event) => void handleVersionSelection(event)}
           />
           <button
             type="button"
@@ -270,6 +386,7 @@ export default function Documents() {
                     <th className="px-6 py-2.5 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Tamanho</th>
                     <th className="px-6 py-2.5 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Modificado</th>
                     <th className="px-6 py-2.5 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Pasta</th>
+                    <th className="px-6 py-2.5 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Fluxos</th>
                     <th className="px-6 py-2.5"></th>
                   </tr>
                 </thead>
@@ -293,8 +410,71 @@ export default function Documents() {
                             {document.folder}
                           </span>
                         </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap gap-1.5">
+                            <span className={cn(
+                              'px-1.5 py-0.5 rounded-[2px] border text-[8px] font-bold uppercase tracking-widest',
+                              document.signatureStatus === 'signed'
+                                ? 'bg-green-50 text-green-600 border-green-100'
+                                : document.signatureStatus === 'requested'
+                                  ? 'bg-blue-50 text-blue-600 border-blue-100'
+                                  : 'bg-gray-50 text-gray-400 border-gray-100',
+                            )}>
+                              SIGN:{document.signatureStatus ?? 'not_requested'}
+                            </span>
+                            <span className={cn(
+                              'px-1.5 py-0.5 rounded-[2px] border text-[8px] font-bold uppercase tracking-widest',
+                              document.ocrStatus === 'completed'
+                                ? 'bg-green-50 text-green-600 border-green-100'
+                                : document.ocrStatus === 'provider_required'
+                                  ? 'bg-amber-50 text-amber-600 border-amber-100'
+                                  : 'bg-gray-50 text-gray-400 border-gray-100',
+                            )}>
+                              OCR:{document.ocrStatus ?? 'not_requested'}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded-[2px] bg-gray-50 border border-gray-100 text-[8px] font-bold text-gray-400 uppercase tracking-widest">
+                              V{document.currentVersion ?? 1}
+                            </span>
+                          </div>
+                        </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                            <button
+                              type="button"
+                              onClick={() => void handleRequestSignature(document)}
+                              disabled={isBusy}
+                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-white rounded border border-transparent hover:border-gray-100 transition-all disabled:opacity-50"
+                              title="Solicitar assinatura"
+                            >
+                              <PenLine className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleRunOcr(document)}
+                              disabled={isBusy}
+                              className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-white rounded border border-transparent hover:border-gray-100 transition-all disabled:opacity-50"
+                              title="Executar OCR"
+                            >
+                              <ScanText className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleVersionUploadClick(document)}
+                              disabled={isBusy}
+                              className="p-1.5 text-gray-400 hover:text-brand hover:bg-white rounded border border-transparent hover:border-gray-100 transition-all disabled:opacity-50"
+                              title="Nova versão"
+                            >
+                              <History className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleCompareVersions(document)}
+                              disabled={isBusy}
+                              className="p-1.5 text-gray-400 hover:text-os-text hover:bg-white rounded border border-transparent hover:border-gray-100 transition-all disabled:opacity-50"
+                              title="Comparar versões"
+                            >
+                              <GitCompare className="w-3.5 h-3.5" />
+                            </button>
                             <button
                               type="button"
                               onClick={() => void handleDownloadDocument(document)}

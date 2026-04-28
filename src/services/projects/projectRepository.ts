@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { ActivityLog, Milestone, Project, ProjectTemplate, Task } from '../../types';
+import type { ActivityLog, Milestone, Project, ProjectPerformanceReview, ProjectTemplate, ProjectTimeEntry, Task } from '../../types';
 import { SupabaseRepository } from '../shared/supabaseRepository';
 import { toIsoString, toUnixTimestamp } from '../shared/mappers';
 
@@ -68,8 +68,28 @@ type TimeEntryRecord = {
   billable: boolean | null;
   hourly_rate: number | null;
   billed_amount: number | null;
+  approval_status?: ProjectTimeEntry['approvalStatus'] | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  rejection_reason?: string | null;
   note: string | null;
   created_at: string;
+};
+
+type PerformanceReviewRecord = {
+  id: string;
+  project_id: string;
+  reviewee_id: string | null;
+  reviewer_id: string | null;
+  period_start: string;
+  period_end: string;
+  rating: number;
+  delivery_score: number;
+  quality_score: number;
+  collaboration_score: number;
+  summary: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type ProjectTemplateRecord = {
@@ -135,6 +155,45 @@ function mapMilestoneRecord(record: MilestoneRecord): Milestone {
     approvalStatus: record.approval_status ?? 'not_requested',
     approvalUrl: record.approval_url ?? undefined,
     createdAt: toIsoString(record.created_at),
+  };
+}
+
+function mapTimeEntryRecord(record: TimeEntryRecord): ProjectTimeEntry {
+  return {
+    id: record.id,
+    projectId: record.project_id,
+    taskId: record.task_id ?? undefined,
+    userId: record.user_id ?? undefined,
+    startedAt: toIsoString(record.started_at),
+    stoppedAt: record.stopped_at ? toIsoString(record.stopped_at) : undefined,
+    durationMinutes: record.duration_minutes ?? undefined,
+    billable: record.billable ?? undefined,
+    hourlyRate: record.hourly_rate ?? undefined,
+    billedAmount: record.billed_amount ?? undefined,
+    approvalStatus: record.approval_status ?? 'pending',
+    approvedBy: record.approved_by ?? undefined,
+    approvedAt: record.approved_at ? toIsoString(record.approved_at) : undefined,
+    rejectionReason: record.rejection_reason ?? undefined,
+    note: record.note ?? undefined,
+    createdAt: toIsoString(record.created_at),
+  };
+}
+
+function mapPerformanceReviewRecord(record: PerformanceReviewRecord): ProjectPerformanceReview {
+  return {
+    id: record.id,
+    projectId: record.project_id,
+    revieweeId: record.reviewee_id ?? undefined,
+    reviewerId: record.reviewer_id ?? undefined,
+    periodStart: toIsoString(record.period_start),
+    periodEnd: toIsoString(record.period_end),
+    rating: Number(record.rating),
+    deliveryScore: record.delivery_score,
+    qualityScore: record.quality_score,
+    collaborationScore: record.collaboration_score,
+    summary: record.summary ?? undefined,
+    createdAt: toIsoString(record.created_at),
+    updatedAt: toIsoString(record.updated_at),
   };
 }
 
@@ -496,7 +555,7 @@ export class SupabaseProjectRepository extends SupabaseRepository {
       timeRows = await this.unwrap(
         this.supabase
           .from('project_time_entries')
-          .select('id, project_id, task_id, user_id, started_at, stopped_at, duration_minutes, billable, hourly_rate, billed_amount, note, created_at')
+          .select('id, project_id, task_id, user_id, started_at, stopped_at, duration_minutes, billable, hourly_rate, billed_amount, approval_status, approved_by, approved_at, rejection_reason, note, created_at')
           .eq('organization_id', this.organizationId)
           .eq('project_id', projectId),
         'Nao foi possivel carregar o apontamento de horas.',
@@ -681,6 +740,80 @@ export class SupabaseProjectRepository extends SupabaseRepository {
         .is('stopped_at', null)
         .select('id'),
       'Nao foi possivel encerrar o apontamento de tempo.',
+    );
+  }
+
+  async listProjectTimeEntries(projectId: string) {
+    const rows = await this.unwrap(
+      this.supabase
+        .from('project_time_entries')
+        .select('id, project_id, task_id, user_id, started_at, stopped_at, duration_minutes, billable, hourly_rate, billed_amount, approval_status, approved_by, approved_at, rejection_reason, note, created_at')
+        .eq('organization_id', this.organizationId)
+        .eq('project_id', projectId)
+        .order('started_at', { ascending: false }),
+      'Nao foi possivel carregar os apontamentos de tempo do projeto.',
+    );
+
+    return (rows as TimeEntryRecord[]).map(mapTimeEntryRecord);
+  }
+
+  async updateTimeEntryApproval(
+    projectId: string,
+    entryId: string,
+    approvalStatus: NonNullable<ProjectTimeEntry['approvalStatus']>,
+    rejectionReason?: string,
+  ) {
+    await this.unwrap(
+      this.supabase
+        .from('project_time_entries')
+        .update({
+          approval_status: approvalStatus,
+          rejection_reason: approvalStatus === 'rejected' ? rejectionReason ?? null : null,
+        })
+        .eq('organization_id', this.organizationId)
+        .eq('project_id', projectId)
+        .eq('id', entryId)
+        .select('id'),
+      'Nao foi possivel atualizar a aprovacao do apontamento.',
+    );
+  }
+
+  async listPerformanceReviews(projectId: string) {
+    const rows = await this.unwrap(
+      this.supabase
+        .from('project_performance_reviews')
+        .select('*')
+        .eq('organization_id', this.organizationId)
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false }),
+      'Nao foi possivel carregar as avaliacoes de desempenho.',
+    );
+
+    return (rows as PerformanceReviewRecord[]).map(mapPerformanceReviewRecord);
+  }
+
+  async createPerformanceReview(
+    projectId: string,
+    review: Omit<ProjectPerformanceReview, 'id' | 'projectId' | 'createdAt' | 'updatedAt'>,
+  ) {
+    await this.unwrap(
+      this.supabase
+        .from('project_performance_reviews')
+        .insert({
+          organization_id: this.organizationId,
+          project_id: projectId,
+          reviewee_id: review.revieweeId ?? null,
+          reviewer_id: review.reviewerId ?? null,
+          period_start: toIsoString(review.periodStart).slice(0, 10),
+          period_end: toIsoString(review.periodEnd).slice(0, 10),
+          rating: review.rating,
+          delivery_score: review.deliveryScore,
+          quality_score: review.qualityScore,
+          collaboration_score: review.collaborationScore,
+          summary: review.summary ?? null,
+        })
+        .select('id'),
+      'Nao foi possivel registrar a avaliacao de desempenho.',
     );
   }
 

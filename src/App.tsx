@@ -11,6 +11,7 @@ import {
 import Layout from './components/Layout';
 import { useAuth } from './contexts/AuthContext';
 import ContentErrorBoundary from './components/ContentErrorBoundary';
+import MfaGate from './components/MfaGate';
 import { setPendingNavigationIntent } from './lib/navigation';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -19,9 +20,11 @@ const Login = lazy(() => import('./pages/Login'));
 const Projects = lazy(() => import('./pages/Projects'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const Documents = lazy(() => import('./pages/Documents'));
+const Contracts = lazy(() => import('./pages/Contracts'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Finance = lazy(() => import('./pages/Finance'));
 const Communications = lazy(() => import('./pages/Communications'));
+const Automations = lazy(() => import('./pages/Automations'));
 const ProposalStatus = lazy(() => import('./pages/public/ProposalStatus'));
 const ClientStatus = lazy(() => import('./pages/public/ClientStatus'));
 
@@ -33,6 +36,8 @@ const tabRoutes: Record<string, string> = {
   finance: '/finance',
   messages: '/messages',
   docs: '/docs',
+  contracts: '/contracts',
+  automations: '/automations',
   settings: '/settings',
 };
 
@@ -44,6 +49,8 @@ const routeTabs: Record<string, string> = {
   '/finance': 'finance',
   '/messages': 'messages',
   '/docs': 'docs',
+  '/contracts': 'contracts',
+  '/automations': 'automations',
   '/settings': 'settings',
 };
 
@@ -59,7 +66,7 @@ function AppLoadingFallback() {
 }
 
 function ProtectedShell({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, mfaRequired } = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const activeTab = routeTabs[pathname] ?? 'dashboard';
@@ -76,6 +83,10 @@ function ProtectedShell({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return <Login />;
+  }
+
+  if (mfaRequired) {
+    return <MfaGate />;
   }
 
   return (
@@ -144,6 +155,14 @@ function DocumentsRoute() {
   return <ProtectedShell><Documents /></ProtectedShell>;
 }
 
+function ContractsRoute() {
+  return <ProtectedShell><Contracts /></ProtectedShell>;
+}
+
+function AutomationsRoute() {
+  return <ProtectedShell><Automations /></ProtectedShell>;
+}
+
 function SettingsRoute() {
   return <ProtectedShell><Settings /></ProtectedShell>;
 }
@@ -202,6 +221,18 @@ const documentsRoute = createRoute({
   component: DocumentsRoute,
 });
 
+const contractsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/contracts',
+  component: ContractsRoute,
+});
+
+const automationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/automations',
+  component: AutomationsRoute,
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
@@ -228,6 +259,8 @@ const routeTree = rootRoute.addChildren([
   financeRoute,
   communicationsRoute,
   documentsRoute,
+  contractsRoute,
+  automationsRoute,
   settingsRoute,
   publicProposalStatusRoute,
   publicClientStatusRoute,

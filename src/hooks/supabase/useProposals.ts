@@ -49,7 +49,10 @@ export function useSupabaseProposals() {
       await repository.createProposal(proposal);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.crm.root(organizationId) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.crm.root(organizationId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
+      ]);
     },
   });
 
@@ -62,6 +65,7 @@ export function useSupabaseProposals() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: proposalsQueryKey }),
         queryClient.invalidateQueries({ queryKey: queryKeys.crm.transactions(organizationId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.root(organizationId) }),
       ]);
     },
   });

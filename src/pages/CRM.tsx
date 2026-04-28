@@ -49,16 +49,34 @@ export default function CRM() {
   const [actionContent, setActionContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<Client['status'] | 'all'>('all');
+  const [tagFilter, setTagFilter] = useState('all');
+  const [pipelineFilter, setPipelineFilter] = useState('all');
   const [showClientModal, setShowClientModal] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | undefined>(undefined);
 
-  const filteredClients = clients.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.company?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (c.contactName ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (c.contactEmail ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+  const availableTags = React.useMemo(
+    () => Array.from(new Set(clients.flatMap((client) => client.tags))).sort(),
+    [clients],
   );
+
+  const filteredClients = clients.filter((client) => {
+    const normalizedSearch = searchQuery.toLowerCase();
+    const matchesSearch =
+      client.name.toLowerCase().includes(normalizedSearch) ||
+      client.company?.toLowerCase().includes(normalizedSearch) ||
+      client.email.toLowerCase().includes(normalizedSearch) ||
+      client.phone.toLowerCase().includes(normalizedSearch) ||
+      client.tags.some((tag) => tag.toLowerCase().includes(normalizedSearch)) ||
+      (client.segment ?? '').toLowerCase().includes(normalizedSearch) ||
+      (client.contactName ?? '').toLowerCase().includes(normalizedSearch) ||
+      (client.contactEmail ?? '').toLowerCase().includes(normalizedSearch);
+    const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
+    const matchesTag = tagFilter === 'all' || client.tags.includes(tagFilter);
+    const matchesPipeline = pipelineFilter === 'all' || deals.some((deal) => deal.clientId === client.id && deal.stageId === pipelineFilter);
+
+    return matchesSearch && matchesStatus && matchesTag && matchesPipeline;
+  });
 
   const selectedClient = clients.find(c => c.id === selectedClientId) || filteredClients[0];
   const selectedClientScopedId = selectedClient?.id ?? selectedClientId;
@@ -241,7 +259,7 @@ export default function CRM() {
       {/* Client List */}
       <div className="w-72 flex flex-col border-r border-gray-100 bg-white shrink-0">
         <div className="p-4 border-b border-gray-50 bg-gray-50/30">
-          <div className="relative">
+          <div className="relative mb-3">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input 
               type="text" 
@@ -250,6 +268,35 @@ export default function CRM() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-white border border-gray-100 rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-brand transition-all shadow-sm font-medium"
             />
+          </div>
+          <div className="grid grid-cols-1 gap-2">
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as Client['status'] | 'all')}
+              className="w-full bg-white border border-gray-100 rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500 outline-none"
+            >
+              <option value="all">Todos os status</option>
+              <option value="lead">Leads</option>
+              <option value="active">Ativos</option>
+              <option value="inactive">Inativos</option>
+              <option value="archived">Arquivados</option>
+            </select>
+            <select
+              value={tagFilter}
+              onChange={(event) => setTagFilter(event.target.value)}
+              className="w-full bg-white border border-gray-100 rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500 outline-none"
+            >
+              <option value="all">Todas as tags</option>
+              {availableTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+            </select>
+            <select
+              value={pipelineFilter}
+              onChange={(event) => setPipelineFilter(event.target.value)}
+              className="w-full bg-white border border-gray-100 rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500 outline-none"
+            >
+              <option value="all">Todo pipeline</option>
+              {stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+            </select>
           </div>
         </div>
 

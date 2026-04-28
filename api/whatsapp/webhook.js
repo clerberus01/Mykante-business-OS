@@ -7,28 +7,37 @@ function sendText(response, status, body) {
   response.end(body);
 }
 
-function isValidSignature(request, rawBody) {
+function getHeader(request, name) {
+  const value = request.headers?.[name] || request.headers?.[name.toLowerCase()] || request.headers?.[name.toUpperCase()];
+
+  if (Array.isArray(value)) {
+    return value.length === 1 ? value[0] : null;
+  }
+
+  return typeof value === 'string' ? value : null;
+}
+
+export function isValidWhatsappSignature(request, rawBody) {
   const appSecret = process.env.WHATSAPP_APP_SECRET;
 
-  if (!appSecret) {
+  if (!appSecret || typeof appSecret !== 'string' || !appSecret.trim()) {
     return false;
   }
 
-  const signature = request.headers['x-hub-signature-256'];
+  const signature = getHeader(request, 'x-hub-signature-256');
 
-  if (!signature || typeof signature !== 'string' || !signature.startsWith('sha256=')) {
+  if (!signature || !/^sha256=[a-f0-9]{64}$/i.test(signature)) {
     return false;
   }
 
-  const expected = `sha256=${crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex')}`;
-  const signatureBuffer = Buffer.from(signature);
-  const expectedBuffer = Buffer.from(expected);
+  const receivedDigest = Buffer.from(signature.slice('sha256='.length), 'hex');
+  const expectedDigest = crypto.createHmac('sha256', appSecret).update(rawBody).digest();
 
-  if (signatureBuffer.length !== expectedBuffer.length) {
+  if (receivedDigest.length !== expectedDigest.length) {
     return false;
   }
 
-  return crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
+  return crypto.timingSafeEqual(receivedDigest, expectedDigest);
 }
 
 async function readRawBody(request) {
@@ -49,14 +58,36 @@ async function upsertInboundMessage(supabase, organizationId, message, contact) 
     return;
   }
 
+  const phoneDigits = phone.replace(/\D/g, '');
+  const { data: matchedClient } = await supabase
+    .from('clients')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .or(`phone.ilike.%${phoneDigits.slice(-8)}%,contact_phone.ilike.%${phoneDigits.slice(-8)}%`)
+    .limit(1)
+    .maybeSingle();
+
+  const suggestedClientPayload = matchedClient?.id
+    ? {}
+    : {
+        name: contact?.profile?.name || phone,
+        phone,
+        source: 'whatsapp',
+        lastMessageBody: body,
+      };
+
   const { data: conversation, error: conversationError } = await supabase
     .from('whatsapp_conversations')
     .upsert(
       {
         organization_id: organizationId,
+        client_id: matchedClient?.id ?? null,
+        channel: 'whatsapp',
         contact_name: contact?.profile?.name || phone,
         phone_e164: phone,
         status: 'open',
+        suggested_client_status: matchedClient?.id ? 'none' : 'pending',
+        suggested_client_payload: suggestedClientPayload,
         last_message_body: body,
         last_message_at: new Date(Number(message.timestamp || Date.now() / 1000) * 1000).toISOString(),
       },
@@ -76,6 +107,7 @@ async function upsertInboundMessage(supabase, organizationId, message, contact) 
   const { error: messageError } = await supabase.from('whatsapp_messages').insert({
     organization_id: organizationId,
     conversation_id: conversation.id,
+    channel: 'whatsapp',
     direction: 'inbound',
     body,
     status: 'received',
@@ -144,7 +176,7 @@ async function handler(request, response) {
 
   const rawBody = await readRawBody(request);
 
-  if (!isValidSignature(request, rawBody)) {
+  if (!isValidWhatsappSignature(request, rawBody)) {
     return sendText(response, 403, 'Invalid signature.');
   }
 

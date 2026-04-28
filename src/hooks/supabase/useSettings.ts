@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRepositoryContext } from './useRepositoryContext';
 import { queryKeys } from './queryKeys';
+import type { OrganizationBranding } from '../../lib/branding';
 
 type ApiHealthResult = {
   status: 'ok' | 'error';
@@ -33,11 +34,13 @@ export function useSupabaseSettings() {
       avatarUrl,
       organizationName,
       lgpdContactEmail,
+      branding,
     }: {
       fullName: string;
       avatarUrl: string;
       organizationName: string;
       lgpdContactEmail: string;
+      branding?: OrganizationBranding;
     }) => {
       if (!user) return;
 
@@ -54,11 +57,28 @@ export function useSupabaseSettings() {
       }
 
       if (organization?.id && isAdmin) {
+        const { data: organizationRecord, error: metadataError } = await supabase
+          .from('organizations')
+          .select('metadata')
+          .eq('id', organization.id)
+          .maybeSingle();
+
+        if (metadataError) {
+          throw metadataError;
+        }
+
+        const currentMetadata =
+          organizationRecord?.metadata && typeof organizationRecord.metadata === 'object'
+            ? organizationRecord.metadata as Record<string, unknown>
+            : {};
+        const metadata = branding ? { ...currentMetadata, branding } : currentMetadata;
+
         const { error: organizationError } = await supabase
           .from('organizations')
           .update({
             name: organizationName.trim() || organization.name || 'Mykante Workspace',
             lgpd_contact_email: lgpdContactEmail.trim() || null,
+            metadata,
           })
           .eq('id', organization.id);
 

@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Client, Project, Task, Transaction } from '../../types';
+import type { Client, Project, ProjectTimeEntry, Proposal, Task, Transaction } from '../../types';
 import {
   createClientRepository,
   createProjectRepository,
@@ -29,8 +29,38 @@ type TaskRecord = {
 type DashboardData = {
   clients: Client[];
   projects: Project[];
+  proposals: Proposal[];
   transactions: Transaction[];
   tasks: Task[];
+  timeEntries: ProjectTimeEntry[];
+};
+
+type ProposalRecord = {
+  id: string;
+  client_id: string;
+  title: string;
+  value: number;
+  status: Proposal['status'];
+  description: string | null;
+  valid_until: string;
+  public_token: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type TimeEntryRecord = {
+  id: string;
+  project_id: string;
+  task_id: string | null;
+  user_id: string | null;
+  started_at: string;
+  stopped_at: string | null;
+  duration_minutes: number | null;
+  billable: boolean | null;
+  hourly_rate: number | null;
+  billed_amount: number | null;
+  note: string | null;
+  created_at: string;
 };
 
 function mapTaskRecord(record: TaskRecord): Task {
@@ -47,6 +77,38 @@ function mapTaskRecord(record: TaskRecord): Task {
     dueDate: record.due_date ? toIsoString(record.due_date) : undefined,
     createdAt: toIsoString(record.created_at),
     updatedAt: toIsoString(record.updated_at),
+  };
+}
+
+function mapProposalRecord(record: ProposalRecord): Proposal {
+  return {
+    id: record.id,
+    clientId: record.client_id,
+    title: record.title,
+    value: Number(record.value),
+    status: record.status,
+    description: record.description ?? undefined,
+    validUntil: toIsoString(record.valid_until),
+    createdAt: toIsoString(record.created_at),
+    updatedAt: toIsoString(record.updated_at),
+    publicToken: record.public_token ?? undefined,
+  };
+}
+
+function mapTimeEntryRecord(record: TimeEntryRecord): ProjectTimeEntry {
+  return {
+    id: record.id,
+    projectId: record.project_id,
+    taskId: record.task_id ?? undefined,
+    userId: record.user_id ?? undefined,
+    startedAt: toIsoString(record.started_at),
+    stoppedAt: record.stopped_at ? toIsoString(record.stopped_at) : undefined,
+    durationMinutes: record.duration_minutes ?? undefined,
+    billable: record.billable ?? undefined,
+    hourlyRate: record.hourly_rate ?? undefined,
+    billedAmount: record.billed_amount ?? undefined,
+    note: record.note ?? undefined,
+    createdAt: toIsoString(record.created_at),
   };
 }
 
@@ -100,6 +162,13 @@ function compareProjects(a: Project, b: Project) {
   return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
 }
 
+function warnDashboardPartialLoad(label: string, reason: unknown) {
+  console.warn(
+    `Supabase dashboard partial load failed (${label}):`,
+    toDataLayerError(reason, 'Falha ao carregar parte dos dados do dashboard.'),
+  );
+}
+
 export function useSupabaseDashboard() {
   const { supabase, organizationId } = useRepositoryContext();
   const queryClient = useQueryClient();
@@ -122,16 +191,24 @@ export function useSupabaseDashboard() {
       return {
         clients: [] as Client[],
         projects: [] as Project[],
+        proposals: [] as Proposal[],
         transactions: [] as Transaction[],
         tasks: [] as Task[],
+        timeEntries: [] as ProjectTimeEntry[],
       };
     }
 
-    try {
-      const [clientRows, projectRows, transactionRows, taskRows] = await Promise.all([
+    const [clientResult, projectResult, transactionResult, proposalResult, taskResult, timeEntryResult] =
+      await Promise.allSettled([
         clientRepository.listClients(),
         projectRepository.listProjects(),
         transactionRepository.listTransactions(),
+        supabase
+          .from('proposals')
+          .select('id, client_id, title, value, status, description, valid_until, public_token, created_at, updated_at')
+          .eq('organization_id', organizationId)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false }),
         supabase
           .from('tasks')
           .select(
@@ -140,30 +217,62 @@ export function useSupabaseDashboard() {
           .eq('organization_id', organizationId)
           .order('updated_at', { ascending: false })
           .limit(100),
+        supabase
+          .from('project_time_entries')
+          .select(
+            'id, project_id, task_id, user_id, started_at, stopped_at, duration_minutes, billable, hourly_rate, billed_amount, note, created_at',
+          )
+          .eq('organization_id', organizationId)
+          .order('started_at', { ascending: false })
+          .limit(500),
       ]);
 
-      if (taskRows.error) {
-        throw taskRows.error;
-      }
+    const clients =
+      clientResult.status === 'fulfilled'
+        ? clientResult.value
+        : (warnDashboardPartialLoad('clients', clientResult.reason), [] as Client[]);
+    const projects =
+      projectResult.status === 'fulfilled'
+        ? projectResult.value
+        : (warnDashboardPartialLoad('projects', projectResult.reason), [] as Project[]);
+    const transactions =
+      transactionResult.status === 'fulfilled'
+        ? transactionResult.value
+        : (warnDashboardPartialLoad('transactions', transactionResult.reason), [] as Transaction[]);
+
+    const proposals =
+      proposalResult.status === 'fulfilled' && !proposalResult.value.error
+        ? (((proposalResult.value.data as ProposalRecord[] | null) ?? []).map(mapProposalRecord))
+        : (warnDashboardPartialLoad(
+            'proposals',
+            proposalResult.status === 'fulfilled' ? proposalResult.value.error : proposalResult.reason,
+          ),
+          [] as Proposal[]);
+    const tasks =
+      taskResult.status === 'fulfilled' && !taskResult.value.error
+        ? (((taskResult.value.data as TaskRecord[] | null) ?? []).map(mapTaskRecord))
+        : (warnDashboardPartialLoad(
+            'tasks',
+            taskResult.status === 'fulfilled' ? taskResult.value.error : taskResult.reason,
+          ),
+          [] as Task[]);
+    const timeEntries =
+      timeEntryResult.status === 'fulfilled' && !timeEntryResult.value.error
+        ? (((timeEntryResult.value.data as TimeEntryRecord[] | null) ?? []).map(mapTimeEntryRecord))
+        : (warnDashboardPartialLoad(
+            'project_time_entries',
+            timeEntryResult.status === 'fulfilled' ? timeEntryResult.value.error : timeEntryResult.reason,
+          ),
+          [] as ProjectTimeEntry[]);
 
       return {
-        clients: clientRows,
-        projects: projectRows,
-        transactions: transactionRows,
-        tasks: ((taskRows.data as TaskRecord[] | null) ?? []).map(mapTaskRecord),
+        clients,
+        projects,
+        proposals,
+        transactions,
+        tasks,
+        timeEntries,
       };
-    } catch (error) {
-      console.warn(
-        'Supabase dashboard load failed:',
-        toDataLayerError(error, 'Falha ao carregar os dados do dashboard.'),
-      );
-      return {
-        clients: [] as Client[],
-        projects: [] as Project[],
-        transactions: [] as Transaction[],
-        tasks: [] as Task[],
-      };
-    }
   }, [clientRepository, organizationId, projectRepository, supabase, transactionRepository]);
 
   const loadDashboard = useCallback(
@@ -182,8 +291,10 @@ export function useSupabaseDashboard() {
   const dashboardData = dashboardQuery.error ? undefined : dashboardQuery.data;
   const clients = useMemo(() => dashboardData?.clients ?? [], [dashboardData?.clients]);
   const projects = useMemo(() => dashboardData?.projects ?? [], [dashboardData?.projects]);
+  const proposals = useMemo(() => dashboardData?.proposals ?? [], [dashboardData?.proposals]);
   const transactions = useMemo(() => dashboardData?.transactions ?? [], [dashboardData?.transactions]);
   const tasks = useMemo(() => dashboardData?.tasks ?? [], [dashboardData?.tasks]);
+  const timeEntries = useMemo(() => dashboardData?.timeEntries ?? [], [dashboardData?.timeEntries]);
 
   if (dashboardQuery.error) {
     console.warn(
@@ -236,6 +347,12 @@ export function useSupabaseDashboard() {
   return {
     loading: dashboardQuery.isLoading,
     summary,
+    clients,
+    projects,
+    proposals,
+    transactions,
+    tasks,
+    timeEntries,
     featuredProjects,
     backlogTasks,
     refreshDashboard: loadDashboard,

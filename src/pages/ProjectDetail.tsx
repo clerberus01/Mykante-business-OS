@@ -26,11 +26,13 @@ import { cn, formatDate, formatCurrency } from '../lib/utils';
 import {
   useSupabaseMilestones as useMilestones,
   useSupabaseTasks as useTasks,
+  useSupabaseProjectTeam as useProjectTeam,
   useSupabaseProjectActivity as useProjectActivity,
   useSupabaseClients as useClients,
   useSupabaseTransactions as useTransactions,
   useSupabaseDocuments as useDocuments,
 } from '../hooks/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 interface ProjectDetailProps {
   project: Project;
@@ -51,10 +53,12 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
     startTimer,
     stopTimer,
   } = useTasks(project.id);
+  const { timeEntries, performanceReviews, updateTimeEntryApproval, createPerformanceReview } = useProjectTeam(project.id);
   const { activities, addActivity } = useProjectActivity(project.id);
   const { clients } = useClients();
   const { transactions } = useTransactions();
   const { documents, uploadDocument, downloadDocument } = useDocuments();
+  const { user, isAdmin, role } = useAuth();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   
   const client = clients.find(c => c.id === project.clientId);
@@ -76,7 +80,6 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
     : project.progress || 0;
   const totalMinutes = tasks.reduce((sum, task) => sum + (task.timeSpentMinutes ?? 0), 0);
   const billableMinutes = tasks.reduce((sum, task) => sum + (task.billableMinutes ?? 0), 0);
-  const billedAmount = tasks.reduce((sum, task) => sum + (task.billedAmount ?? 0), 0);
   const projectedRevenue = Math.round((project.budget * progress) / 100);
   const totalIncome = projectTransactions.filter(t => t.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
   const revenueGap = Math.max(0, projectedRevenue - totalIncome);
@@ -86,10 +89,10 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
   const daysElapsed = Math.min(daysTotal, Math.max(0, Math.ceil((Date.now() - startTimestamp) / 86400000)));
   const expectedRemaining = Math.max(0, tasks.length - Math.round((tasks.length * daysElapsed) / daysTotal));
   const actualRemaining = tasks.filter(task => task.status !== 'done').length;
-  type TeamAllocation = { name: string; minutes: number; tasks: number; active: number; urgent: number };
+  type TeamAllocation = { id: string; name: string; minutes: number; tasks: number; active: number; urgent: number };
   const teamAllocationMap = tasks.reduce<Record<string, TeamAllocation>>((acc, task) => {
     const key = task.responsibleId || task.responsible || 'sem-responsavel';
-    acc[key] ??= { name: task.responsible || 'Sem responsavel', minutes: 0, tasks: 0, active: 0, urgent: 0 };
+    acc[key] ??= { id: key, name: task.responsible || 'Sem responsavel', minutes: 0, tasks: 0, active: 0, urgent: 0 };
     acc[key].minutes += task.timeSpentMinutes ?? 0;
     acc[key].tasks += task.status !== 'done' ? 1 : 0;
     acc[key].active += task.status === 'doing' ? 1 : 0;
@@ -99,6 +102,14 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
   const teamAllocation: TeamAllocation[] = Object.keys(teamAllocationMap)
     .map((key) => teamAllocationMap[key])
     .sort((a, b) => b.tasks - a.tasks || b.minutes - a.minutes);
+  const canManageTeam = isAdmin || role === 'manager';
+  const pendingTimeEntries = timeEntries.filter((entry) => entry.approvalStatus === 'pending' && entry.stoppedAt);
+  const approvedMinutes = timeEntries
+    .filter((entry) => entry.approvalStatus === 'approved')
+    .reduce((sum, entry) => sum + (entry.durationMinutes ?? 0), 0);
+  const averagePerformance = performanceReviews.length
+    ? performanceReviews.reduce((sum, review) => sum + review.rating, 0) / performanceReviews.length
+    : 0;
 
   const handleAddMilestone = async () => {
     if (!newMilestoneTitle) return;
@@ -212,6 +223,61 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
 
     await startTimer(task.id);
     addActivity('Tempo Iniciado', `Apontamento de tempo iniciado em "${task.title}".`, 'Operador');
+  };
+
+  const handleTimeEntryApproval = async (entryId: string, approvalStatus: 'approved' | 'rejected') => {
+    const rejectionReason = approvalStatus === 'rejected'
+      ? window.prompt('Motivo da rejeicao do apontamento')?.trim()
+      : undefined;
+
+    if (approvalStatus === 'rejected' && !rejectionReason) return;
+
+    try {
+      await updateTimeEntryApproval({ entryId, approvalStatus, rejectionReason });
+      void addActivity(
+        approvalStatus === 'approved' ? 'Horas Aprovadas' : 'Horas Rejeitadas',
+        `Apontamento ${entryId.slice(0, 8)} marcado como ${approvalStatus}.`,
+        'Operador',
+      );
+    } catch (error) {
+      console.error('Time entry approval failed:', error);
+      window.alert('Nao foi possivel atualizar a aprovacao do apontamento.');
+    }
+  };
+
+  const handleCreatePerformanceReview = async (memberId: string, memberName: string) => {
+    if (!user) return;
+
+    const ratingInput = window.prompt(`Nota geral para ${memberName} (1 a 5)`, '4');
+    const rating = Number(ratingInput?.replace(',', '.'));
+
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+      window.alert('Informe uma nota entre 1 e 5.');
+      return;
+    }
+
+    const summary = window.prompt('Resumo da avaliacao por projeto')?.trim();
+    const now = new Date();
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
+
+    try {
+      await createPerformanceReview({
+        revieweeId: /^[0-9a-f-]{36}$/i.test(memberId) ? memberId : undefined,
+        reviewerId: user.id,
+        periodStart,
+        periodEnd,
+        rating,
+        deliveryScore: Math.round(rating),
+        qualityScore: Math.round(rating),
+        collaborationScore: Math.round(rating),
+        summary,
+      });
+      void addActivity('Avaliacao Registrada', `Avaliacao de desempenho registrada para ${memberName}.`, 'Operador');
+    } catch (error) {
+      console.error('Performance review failed:', error);
+      window.alert('Nao foi possivel registrar a avaliacao de desempenho.');
+    }
   };
 
   const buildProjectBriefing = () => [
@@ -637,43 +703,111 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
                 <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
                    <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Horas Registradas</h3>
                    <p className="text-3xl font-black text-os-text">{Math.round((totalMinutes / 60) * 10) / 10}h</p>
-                   <p className="text-[10px] font-bold uppercase text-gray-400 mt-2">Billable: {Math.round((billableMinutes / 60) * 10) / 10}h</p>
+                   <p className="text-[10px] font-bold uppercase text-gray-400 mt-2">Aprovadas: {Math.round((approvedMinutes / 60) * 10) / 10}h</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                   <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Faturamento de Horas</h3>
-                   <p className="text-3xl font-black text-green-600">{formatCurrency(billedAmount)}</p>
-                   <p className="text-[10px] font-bold uppercase text-gray-400 mt-2">Gerado automaticamente ao parar timers com valor hora.</p>
+                   <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Aguardando Aprovacao</h3>
+                   <p className="text-3xl font-black text-amber-500">{pendingTimeEntries.length}</p>
+                   <p className="text-[10px] font-bold uppercase text-gray-400 mt-2">Registros de ponto encerrados.</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                   <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Carga Critica</h3>
-                   <p className="text-3xl font-black text-brand">{teamAllocation.filter(member => member.tasks >= 5 || member.urgent > 0).length}</p>
-                   <p className="text-[10px] font-bold uppercase text-gray-400 mt-2">Membros com urgencias ou alta carga.</p>
+                   <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Desempenho Medio</h3>
+                   <p className="text-3xl font-black text-brand">{averagePerformance ? averagePerformance.toFixed(1) : 'N/A'}</p>
+                   <p className="text-[10px] font-bold uppercase text-gray-400 mt-2">{performanceReviews.length} avaliacao(oes) no projeto.</p>
                 </div>
 
                 <div className="md:col-span-3 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
                    <div className="p-4 bg-gray-50 border-b border-gray-100">
-                      <h3 className="text-[10px] font-black uppercase tracking-widest text-os-text">Resource Allocation</h3>
+                      <h3 className="text-[10px] font-black uppercase tracking-widest text-os-text">Equipe & Desempenho</h3>
                    </div>
                    <div className="divide-y divide-gray-50">
                       {teamAllocation.map(member => {
                         const overloaded = member.tasks >= 5 || member.urgent > 0;
+                        const memberReviews = performanceReviews.filter((review) => review.revieweeId === member.id);
+                        const memberAverage = memberReviews.length
+                          ? memberReviews.reduce((sum, review) => sum + review.rating, 0) / memberReviews.length
+                          : null;
                         return (
                           <div key={member.name} className="p-5 flex items-center justify-between">
                              <div>
                                 <h4 className="text-sm font-black text-os-text">{member.name}</h4>
                                 <p className="text-[10px] font-mono text-gray-400 uppercase">{member.tasks} tarefas abertas • {member.active} em execução • {Math.round((member.minutes / 60) * 10) / 10}h registradas</p>
                              </div>
-                             <span className={cn(
-                               "px-3 py-1 rounded text-[9px] font-black uppercase tracking-widest",
-                               overloaded ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
-                             )}>
-                                {overloaded ? 'SOBRECARREGADO' : 'OK'}
-                             </span>
+                             <div className="flex items-center gap-2">
+                                <span className="px-3 py-1 rounded text-[9px] font-black uppercase tracking-widest bg-gray-50 text-gray-500">
+                                  Nota {memberAverage ? memberAverage.toFixed(1) : 'N/A'}
+                                </span>
+                                {canManageTeam && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleCreatePerformanceReview(member.id, member.name)}
+                                    className="px-3 py-1 rounded text-[9px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 transition-all"
+                                  >
+                                    Avaliar
+                                  </button>
+                                )}
+                                <span className={cn(
+                                  "px-3 py-1 rounded text-[9px] font-black uppercase tracking-widest",
+                                  overloaded ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
+                                )}>
+                                  {overloaded ? 'SOBRECARREGADO' : 'OK'}
+                                </span>
+                             </div>
                           </div>
                         );
                       })}
                       {teamAllocation.length === 0 && (
                         <div className="p-8 text-center text-[10px] font-bold uppercase text-gray-300">Nenhuma tarefa atribuida.</div>
+                      )}
+                   </div>
+                </div>
+
+                <div className="md:col-span-3 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                   <div className="p-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                      <h3 className="text-[10px] font-black uppercase tracking-widest text-os-text">Registro de Ponto / Horas</h3>
+                      <span className="text-[9px] font-mono font-bold uppercase text-gray-400">{timeEntries.length} registros</span>
+                   </div>
+                   <div className="divide-y divide-gray-50">
+                      {timeEntries.slice(0, 8).map((entry) => {
+                        const task = tasks.find((item) => item.id === entry.taskId);
+                        return (
+                          <div key={entry.id} className="p-5 grid grid-cols-1 md:grid-cols-5 gap-3 items-center">
+                             <div className="md:col-span-2">
+                                <h4 className="text-xs font-black text-os-text">{task?.title || 'Apontamento avulso'}</h4>
+                                <p className="text-[10px] font-mono text-gray-400 uppercase">
+                                  {formatDate(entry.startedAt)} - {Math.round(((entry.durationMinutes ?? 0) / 60) * 10) / 10}h
+                                </p>
+                             </div>
+                             <span className={cn(
+                               "justify-self-start px-3 py-1 rounded text-[9px] font-black uppercase tracking-widest",
+                               entry.approvalStatus === 'approved'
+                                 ? "bg-green-50 text-green-600"
+                                 : entry.approvalStatus === 'rejected'
+                                   ? "bg-red-50 text-red-600"
+                                   : "bg-amber-50 text-amber-600"
+                             )}>
+                                {entry.approvalStatus ?? 'pending'}
+                             </span>
+                             <span className="text-[10px] font-bold uppercase text-gray-400">
+                                {entry.billable === false ? 'Nao faturavel' : `Faturavel - ${formatCurrency(entry.billedAmount ?? 0)}`}
+                             </span>
+                             {canManageTeam && entry.approvalStatus === 'pending' && entry.stoppedAt ? (
+                               <div className="flex justify-end gap-2">
+                                  <button type="button" onClick={() => void handleTimeEntryApproval(entry.id, 'approved')} className="px-3 py-1 rounded text-[9px] font-black uppercase bg-green-50 text-green-600 border border-green-100">
+                                    Aprovar
+                                  </button>
+                                  <button type="button" onClick={() => void handleTimeEntryApproval(entry.id, 'rejected')} className="px-3 py-1 rounded text-[9px] font-black uppercase bg-red-50 text-red-600 border border-red-100">
+                                    Rejeitar
+                                  </button>
+                               </div>
+                             ) : (
+                               <span className="text-right text-[9px] font-mono text-gray-300">{entry.approvedAt ? formatDate(entry.approvedAt) : '-'}</span>
+                             )}
+                          </div>
+                        );
+                      })}
+                      {timeEntries.length === 0 && (
+                        <div className="p-8 text-center text-[10px] font-bold uppercase text-gray-300">Nenhum ponto registrado neste projeto.</div>
                       )}
                    </div>
                 </div>

@@ -1,7 +1,7 @@
 import { Resend } from 'resend';
 import { sendJson } from '../_lib/auth.js';
 import { withApiMiddleware } from '../_lib/middleware.js';
-import { readJsonBody } from '../_lib/request.js';
+import { getValidationErrorPayload, readValidatedJsonBody, testNotificationSchema } from '../_lib/validation.js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'Mykante OS <onboarding@resend.dev>';
@@ -15,7 +15,7 @@ async function handler(request, response, authContext) {
   let adminClient = null;
 
   try {
-    await readJsonBody(request);
+    await readValidatedJsonBody(request, testNotificationSchema);
     const { supabase, user, profile, organizationId } = authContext;
     adminClient = supabase;
     const userEmail = profile?.email || user.email;
@@ -69,6 +69,9 @@ async function handler(request, response, authContext) {
     });
   } catch (error) {
     console.error('Email notification error:', error);
+    if (error?.statusCode === 400) {
+      return sendJson(response, 400, getValidationErrorPayload(error));
+    }
 
     if (dispatchContext && adminClient) {
       try {

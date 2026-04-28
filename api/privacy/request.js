@@ -1,16 +1,6 @@
 import { sendJson } from '../_lib/auth.js';
 import { withApiMiddleware } from '../_lib/middleware.js';
-import { readJsonBody } from '../_lib/request.js';
-
-const ALLOWED_TYPES = new Set([
-  'confirm',
-  'access',
-  'correction',
-  'portability',
-  'anonymization',
-  'deletion',
-  'revocation',
-]);
+import { getValidationErrorPayload, privacyRequestSchema, readValidatedJsonBody } from '../_lib/validation.js';
 
 async function handler(request, response, authContext) {
   if (request.method !== 'POST') {
@@ -19,11 +9,7 @@ async function handler(request, response, authContext) {
 
   try {
     const { supabase, user, organizationId } = authContext;
-    const { requestType, requestDetails } = await readJsonBody(request);
-
-    if (!ALLOWED_TYPES.has(requestType)) {
-      return sendJson(response, 400, { error: 'Invalid request type.' });
-    }
+    const { requestType, requestDetails } = await readValidatedJsonBody(request, privacyRequestSchema);
 
     const { data, error } = await supabase
       .from('data_subject_requests')
@@ -49,6 +35,10 @@ async function handler(request, response, authContext) {
     });
   } catch (error) {
     console.error('Privacy request error:', error);
+    if (error?.statusCode === 400) {
+      return sendJson(response, 400, getValidationErrorPayload(error));
+    }
+
     return sendJson(response, 500, {
       error: error instanceof Error ? error.message : 'Failed to create privacy request.',
     });

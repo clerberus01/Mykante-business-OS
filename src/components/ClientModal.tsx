@@ -3,6 +3,7 @@ import { X, Loader2, User, Landmark, Info, Tag, MapPin, CreditCard, ChevronRight
 import { Client } from '../types';
 import { cn } from '../lib/utils';
 import { useClientAvatarUpload } from '../hooks/supabase';
+import { clientDocumentSchema } from '../schemas/client';
 
 interface ClientModalProps {
   onClose: () => void;
@@ -29,6 +30,10 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
     contactPhone: initialData?.contactPhone || '',
     avatarUrl: initialData?.avatarUrl || '',
     status: initialData?.status || 'lead' as Client['status'],
+    whatsappOptIn: initialData?.whatsappOptIn ?? true,
+    source: initialData?.source || 'web',
+    segment: initialData?.segment || '',
+    customFieldsText: initialData?.customFields ? JSON.stringify(initialData.customFields, null, 2) : '',
     address: {
       street: initialData?.address?.street || '',
       number: initialData?.address?.number || '',
@@ -47,13 +52,47 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
   });
 
   const [tagInput, setTagInput] = useState('');
+  const [cepLoading, setCepLoading] = useState(false);
   const isCompany = formData.personType.trim().toLowerCase().startsWith('j');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await onSave(formData);
+      const documentValidation = clientDocumentSchema.safeParse({
+        personType: formData.personType,
+        taxId: formData.taxId,
+      });
+
+      if (!documentValidation.success) {
+        window.alert(documentValidation.error.issues[0]?.message ?? 'Documento invalido.');
+        setLoading(false);
+        return;
+      }
+
+      let customFields: Record<string, unknown> = {};
+
+      if (formData.customFieldsText.trim()) {
+        try {
+          customFields = JSON.parse(formData.customFieldsText) as Record<string, unknown>;
+        } catch {
+          window.alert('Campos customizaveis devem estar em JSON valido.');
+          setLoading(false);
+          return;
+        }
+      }
+
+      const { customFieldsText: ignoredCustomFieldsText, ...clientPayload } = formData;
+      void ignoredCustomFieldsText;
+
+      await onSave({
+        ...clientPayload,
+        email: formData.email.trim(),
+        taxId: formData.taxId.trim(),
+        source: formData.source,
+        segment: formData.segment.trim() || undefined,
+        customFields,
+      });
       onClose();
     } finally {
       setLoading(false);
@@ -83,6 +122,38 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
     } catch (error) {
       console.error('Client avatar upload failed:', error);
       window.alert(error instanceof Error ? error.message : 'Nao foi possivel enviar a imagem do cliente.');
+    }
+  };
+
+  const handleCepLookup = async () => {
+    const cep = formData.address.zipCode.replace(/\D/g, '');
+
+    if (cep.length !== 8) return;
+
+    setCepLoading(true);
+
+    try {
+      const response = await fetch(`https://brasilapi.com.br/api/cep/v2/${cep}`);
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.message || 'CEP nao encontrado.');
+      }
+
+      setFormData((current) => ({
+        ...current,
+        address: {
+          ...current.address,
+          street: payload.street ?? current.address.street,
+          neighborhood: payload.neighborhood ?? current.address.neighborhood,
+          city: payload.city ?? current.address.city,
+          state: payload.state ?? current.address.state,
+        },
+      }));
+    } catch (error) {
+      console.warn('CEP lookup failed:', error);
+    } finally {
+      setCepLoading(false);
     }
   };
 
@@ -194,7 +265,6 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
                       {isCompany ? 'Razão Social' : 'Nome Completo'}
                     </label>
                     <input 
-                      required
                       type="text" 
                       value={formData.name}
                       onChange={e => setFormData({ ...formData, name: e.target.value })}
@@ -222,7 +292,6 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">E-mail Principal</label>
                     <input 
-                      required
                       type="email" 
                       value={formData.email}
                       onChange={e => setFormData({ ...formData, email: e.target.value })}
@@ -240,6 +309,15 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
                       className="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-brand/10 focus:border-brand outline-none transition-all"
                       placeholder="+55 (11) 99999-9999"
                     />
+                    <label className="mt-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                      <input
+                        type="checkbox"
+                        checked={formData.whatsappOptIn}
+                        onChange={e => setFormData({ ...formData, whatsappOptIn: e.target.checked })}
+                        className="rounded border-gray-200 text-brand focus:ring-brand"
+                      />
+                      WhatsApp ativo
+                    </label>
                   </div>
                 </div>
 
@@ -337,8 +415,9 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
                         type="text" 
                         value={formData.address.zipCode}
                         onChange={e => setFormData({ ...formData, address: { ...formData.address, zipCode: e.target.value } })}
+                        onBlur={() => void handleCepLookup()}
                         className="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 font-mono text-xs focus:bg-white outline-none transition-all"
-                        placeholder="00000-000"
+                        placeholder={cepLoading ? 'Buscando...' : '00000-000'}
                       />
                     </div>
                     <div className="col-span-2 space-y-1">
@@ -506,6 +585,40 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
                     onChange={e => setFormData({ ...formData, origin: e.target.value })}
                     className="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 text-xs font-medium focus:bg-white outline-none transition-all"
                     placeholder="Ex: Indicação, Mídia Paga, Evento..."
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Segmento</label>
+                    <input
+                      type="text"
+                      value={formData.segment}
+                      onChange={e => setFormData({ ...formData, segment: e.target.value })}
+                      className="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 text-xs font-medium focus:bg-white outline-none transition-all"
+                      placeholder="Ex: SaaS, Varejo, Industria"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Fonte</label>
+                    <select
+                      value={formData.source}
+                      onChange={e => setFormData({ ...formData, source: e.target.value })}
+                      className="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 text-xs font-medium focus:bg-white outline-none transition-all"
+                    >
+                      <option value="web">Web</option>
+                      <option value="mobile">Mobile</option>
+                      <option value="whatsapp">WhatsApp</option>
+                      <option value="import">Importacao</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Campos Customizaveis JSON</label>
+                  <textarea
+                    value={formData.customFieldsText}
+                    onChange={e => setFormData({ ...formData, customFieldsText: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 text-xs font-mono focus:bg-white outline-none transition-all min-h-[100px]"
+                    placeholder='{"contrato":"mensal","prioridade":"alta"}'
                   />
                 </div>
               </div>

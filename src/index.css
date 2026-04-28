@@ -4,8 +4,8 @@
   --font-sans: "Segoe UI", "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Consolas", "Courier New", ui-monospace, SFMono-Regular, monospace;
 
-  --color-brand: #FF6321;
-  --color-os-bg: #F8F9FA;
-  --color-os-dark: #141414;
-  --color-os-text: #1A1A1A;
+  --color-brand: var(--brand-color, #FF6321);
+  --color-os-bg: var(--os-bg-color, #F8F9FA);
+  --color-os-dark: var(--os-dark-color, #141414);
+  --color-os-text: var(--os-text-color, #1A1A1A);
 }

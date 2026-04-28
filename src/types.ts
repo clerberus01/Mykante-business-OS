@@ -28,6 +28,12 @@ export interface Client {
   contactPhone?: string;
   avatarUrl?: string;
   status: EntityStatus;
+  source?: 'web' | 'mobile' | 'whatsapp' | 'import' | string;
+  createdFromMobile?: boolean;
+  whatsappOptIn?: boolean;
+  responsibleId?: string;
+  segment?: string;
+  customFields?: Record<string, unknown>;
   
   // Financial
   address: {
@@ -163,8 +169,28 @@ export interface ProjectTimeEntry {
   billable?: boolean;
   hourlyRate?: number;
   billedAmount?: number;
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  approvedBy?: string;
+  approvedAt?: ISODateString;
+  rejectionReason?: string;
   note?: string;
   createdAt: ISODateString;
+}
+
+export interface ProjectPerformanceReview {
+  id: string;
+  projectId: string;
+  revieweeId?: string;
+  reviewerId?: string;
+  periodStart: ISODateString;
+  periodEnd: ISODateString;
+  rating: number;
+  deliveryScore: number;
+  qualityScore: number;
+  collaborationScore: number;
+  summary?: string;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
 }
 
 export interface ActivityLog {
@@ -264,17 +290,89 @@ export interface StoredDocument {
   clientId?: string;
   projectId?: string;
   proposalId?: string;
+  signatureStatus?: 'not_requested' | 'requested' | 'signed' | 'declined' | 'expired';
+  signatureProvider?: string;
+  signatureRequestId?: string;
+  signatureUrl?: string;
+  signatureRequestedAt?: ISODateString;
+  signatureCompletedAt?: ISODateString;
+  ocrStatus?: 'not_requested' | 'queued' | 'processing' | 'completed' | 'failed' | 'provider_required';
+  ocrText?: string;
+  ocrData?: Record<string, unknown>;
+  ocrProcessedAt?: ISODateString;
+  currentVersion?: number;
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }
 
-export interface WhatsappConversation {
+export interface DocumentVersion {
+  id: string;
+  documentId: string;
+  versionNumber: number;
+  bucketId: string;
+  storagePath: string;
+  fileName: string;
+  fileExtension?: string;
+  mimeType?: string;
+  sizeBytes: number;
+  checksum?: string;
+  changeSummary?: string;
+  createdAt: ISODateString;
+}
+
+export interface Contract {
   id: string;
   clientId?: string;
+  projectId?: string;
+  documentId?: string;
+  title: string;
+  status: 'draft' | 'active' | 'pending_signature' | 'expired' | 'cancelled' | 'renewed';
+  contractType: string;
+  amount: number;
+  currency: string;
+  startsAt: ISODateString;
+  endsAt?: ISODateString;
+  renewalInterval: 'none' | 'monthly' | 'quarterly' | 'yearly';
+  autoRenew: boolean;
+  renewalNoticeDays: number;
+  nextRenewalAt?: ISODateString;
+  lastRenewedAt?: ISODateString;
+  notes?: string;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+}
+
+export interface TemplateMarketplaceItem {
+  id: string;
+  templateType: 'proposal' | 'checklist' | 'workflow' | 'project';
+  name: string;
+  description?: string;
+  payload: Record<string, unknown>;
+  locale: string;
+  currency: string;
+  isPublic: boolean;
+  installCount: number;
+  createdAt: ISODateString;
+}
+
+export interface WhatsappConversation {
+  id: string;
+  channel?: 'whatsapp' | 'email' | 'sms';
+  clientId?: string;
+  projectId?: string;
   contactName: string;
   phoneE164: string;
   status: 'open' | 'archived';
+  category?: 'opportunity' | 'support' | 'billing';
+  classificationConfidence?: number;
   unreadCount: number;
+  suggestedClientStatus?: 'none' | 'pending' | 'created' | 'dismissed';
+  suggestedClientPayload?: {
+    name?: string;
+    phone?: string;
+    source?: 'whatsapp' | 'mobile' | 'web' | 'import' | string;
+    lastMessageBody?: string;
+  };
   lastMessageBody?: string;
   lastMessageAt?: ISODateString;
   createdAt: ISODateString;
@@ -284,14 +382,56 @@ export interface WhatsappConversation {
 export interface WhatsappMessage {
   id: string;
   conversationId: string;
+  channel?: 'whatsapp' | 'email' | 'sms';
   direction: 'inbound' | 'outbound';
   body: string;
   status: 'queued' | 'sent' | 'delivered' | 'read' | 'received' | 'failed';
   providerMessageId?: string;
   errorMessage?: string;
   sentBy?: string;
+  retryCount?: number;
+  maxRetries?: number;
+  nextAttemptAt?: ISODateString;
+  templateId?: string;
   createdAt: ISODateString;
   sentAt?: ISODateString;
   deliveredAt?: ISODateString;
   readAt?: ISODateString;
+}
+
+export interface WhatsappTemplate {
+  id: string;
+  templateKey: string;
+  metaTemplateName: string;
+  languageCode: string;
+  category: 'utility' | 'marketing' | 'authentication';
+  bodyPreview: string;
+  status: 'approved' | 'paused' | 'rejected' | 'draft';
+}
+
+export type AutomationRuleKey =
+  | 'proposal_accepted_create_project'
+  | 'task_overdue_follow_up'
+  | 'payment_received_mark_paid';
+
+export interface AutomationRule {
+  id: string;
+  ruleKey: AutomationRuleKey;
+  name: string;
+  description?: string;
+  triggerKey: string;
+  isActive: boolean;
+  actions: Array<{ type: string; label: string }>;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+}
+
+export interface AutomationRun {
+  id: string;
+  ruleKey: AutomationRuleKey;
+  eventSource: string;
+  eventId: string;
+  status: 'success' | 'skipped' | 'failed';
+  details: Record<string, unknown>;
+  createdAt: ISODateString;
 }

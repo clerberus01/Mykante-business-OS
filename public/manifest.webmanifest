@@ -1,0 +1,19 @@
+{
+  "name": "Mykante Business OS",
+  "short_name": "Mykante OS",
+  "description": "CRM, projetos, financeiro e portal do cliente.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#111827",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

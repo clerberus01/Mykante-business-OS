@@ -37,12 +37,21 @@ export function useSupabaseWhatsapp() {
     [organizationId, supabase],
   );
   const conversationsQueryKey = useMemo(() => queryKeys.whatsapp.conversations(organizationId), [organizationId]);
+  const templatesQueryKey = useMemo(() => queryKeys.whatsapp.templates(organizationId), [organizationId]);
   const conversationsQuery = useQuery({
     queryKey: conversationsQueryKey,
     enabled: Boolean(repository),
     queryFn: async () => {
       if (!repository) return [];
       return repository.listConversations();
+    },
+  });
+  const templatesQuery = useQuery({
+    queryKey: templatesQueryKey,
+    enabled: Boolean(repository),
+    queryFn: async () => {
+      if (!repository) return [];
+      return repository.listTemplates();
     },
   });
 
@@ -138,9 +147,27 @@ export function useSupabaseWhatsapp() {
     },
   });
 
+  const linkConversationClientMutation = useMutation({
+    mutationFn: async ({ conversationId, clientId }: { conversationId: string; clientId: string }) => {
+      if (!repository) return;
+      await repository.linkConversationClient(conversationId, clientId);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: conversationsQueryKey });
+    },
+  });
+
   const sendMessageMutation = useMutation({
-    mutationFn: async ({ conversationId, body }: { conversationId: string; body: string }) => {
-      const trimmedBody = body.trim();
+    mutationFn: async ({
+      conversationId,
+      body,
+      templateKey,
+    }: {
+      conversationId: string;
+      body?: string;
+      templateKey?: string;
+    }) => {
+      const trimmedBody = body?.trim() ?? '';
 
       if (!session?.access_token) {
         throw new Error('Sessao invalida para envio de WhatsApp.');
@@ -150,7 +177,7 @@ export function useSupabaseWhatsapp() {
         throw new Error('Organizacao invalida para envio de WhatsApp.');
       }
 
-      if (!trimmedBody) {
+      if (!trimmedBody && !templateKey) {
         throw new Error('Mensagem vazia.');
       }
 
@@ -163,7 +190,8 @@ export function useSupabaseWhatsapp() {
         },
         body: JSON.stringify({
           conversationId,
-          body: trimmedBody,
+          body: trimmedBody || undefined,
+          templateKey,
         }),
       });
 
@@ -185,7 +213,8 @@ export function useSupabaseWhatsapp() {
   });
 
   const sendMessage = useCallback(
-    (conversationId: string, body: string) => sendMessageMutation.mutateAsync({ conversationId, body }),
+    (conversationId: string, body: string, templateKey?: string) =>
+      sendMessageMutation.mutateAsync({ conversationId, body, templateKey }),
     [sendMessageMutation],
   );
 
@@ -200,6 +229,7 @@ export function useSupabaseWhatsapp() {
 
   return {
     conversations: conversationsQuery.data ?? [],
+    templates: templatesQuery.data ?? [],
     messagesByConversation,
     loading: conversationsQuery.isLoading,
     error: conversationsError,
@@ -208,6 +238,7 @@ export function useSupabaseWhatsapp() {
     openClientConversation: openClientConversationMutation.mutateAsync,
     loadMessages,
     markConversationRead: markConversationReadMutation.mutateAsync,
+    linkConversationClient: linkConversationClientMutation.mutateAsync,
     sendMessage,
     refreshWhatsapp: loadConversations,
   };

@@ -1,7 +1,7 @@
 import { sendJson } from '../_lib/auth.js';
 import { withApiMiddleware } from '../_lib/middleware.js';
-import { readJsonBody } from '../_lib/request.js';
 import { getPublicAppUrl } from '../_lib/runtime.js';
+import { getValidationErrorPayload, readValidatedJsonBody, testNotificationSchema } from '../_lib/validation.js';
 
 const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID;
 const ONESIGNAL_API_KEY = process.env.ONESIGNAL_API_KEY || process.env.ONESIGNAL_REST_API_KEY;
@@ -15,7 +15,7 @@ async function handler(request, response, authContext) {
   let adminClient = null;
 
   try {
-    await readJsonBody(request);
+    await readValidatedJsonBody(request, testNotificationSchema);
 
     if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY) {
       throw new Error('Missing OneSignal server credentials.');
@@ -83,6 +83,9 @@ async function handler(request, response, authContext) {
     });
   } catch (error) {
     console.error('Push notification error:', error);
+    if (error?.statusCode === 400) {
+      return sendJson(response, 400, getValidationErrorPayload(error));
+    }
 
     if (dispatchContext && adminClient) {
       try {

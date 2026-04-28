@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getAuthenticatedContext } from '../auth.js';
+import { getAuthenticatedContext, hasOrganizationRole, requireOrganizationRole } from '../auth.js';
 import { getSupabaseAdminClient } from '../supabaseAdmin.js';
 
 vi.mock('../supabaseAdmin.js', () => ({
@@ -52,6 +52,12 @@ function createSupabaseMock({ membershipResult, profileResult }) {
   return { supabase, membershipQuery };
 }
 
+function createSessionToken(payload = {}) {
+  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+  const body = Buffer.from(JSON.stringify({ aal: 'aal2', sub: 'user-1', ...payload })).toString('base64url');
+  return `${header}.${body}.signature`;
+}
+
 describe('getAuthenticatedContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -72,7 +78,7 @@ describe('getAuthenticatedContext', () => {
 
     const context = await getAuthenticatedContext({
       headers: {
-        authorization: 'Bearer session-token',
+        authorization: `Bearer ${createSessionToken()}`,
         'x-organization-id': 'org-requested',
       },
     });
@@ -97,11 +103,50 @@ describe('getAuthenticatedContext', () => {
 
     const context = await getAuthenticatedContext({
       headers: {
-        authorization: 'Bearer session-token',
+        authorization: `Bearer ${createSessionToken()}`,
       },
     });
 
     expect(context.organizationId).toBe('org-first');
     expect(membershipQuery.order).toHaveBeenCalledWith('created_at', { ascending: true });
+  });
+
+  it('rejects authenticated API access when the Supabase session is not aal2', async () => {
+    await expect(
+      getAuthenticatedContext({
+        headers: {
+          authorization: `Bearer ${createSessionToken({ aal: 'aal1' })}`,
+        },
+      }),
+    ).rejects.toMatchObject({
+      message: 'Multi-factor authentication is required.',
+      statusCode: 403,
+    });
+  });
+});
+
+describe('organization RBAC helpers', () => {
+  it('checks whether the authenticated context has an allowed organization role', () => {
+    expect(hasOrganizationRole({ role: 'admin' }, ['owner', 'admin'])).toBe(true);
+    expect(hasOrganizationRole({ role: 'operator' }, ['owner', 'admin'])).toBe(false);
+    expect(hasOrganizationRole({ role: null }, ['owner'])).toBe(false);
+  });
+
+  it('throws a 403 error when the organization role is not allowed', () => {
+    expect(() => requireOrganizationRole({ role: 'manager' }, ['owner', 'admin'])).toThrow(
+      'Insufficient organization role.',
+    );
+
+    try {
+      requireOrganizationRole({ role: 'manager' }, ['owner', 'admin']);
+    } catch (error) {
+      expect(error.statusCode).toBe(403);
+    }
+  });
+
+  it('returns the context when the organization role is allowed', () => {
+    const context = { role: 'owner', organizationId: 'org-1' };
+
+    expect(requireOrganizationRole(context, ['owner'])).toBe(context);
   });
 });
