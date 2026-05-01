@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, Circle, AlertCircle, Clock } from 'lucide-react';
+import { CheckCircle2, Circle, Clock } from 'lucide-react';
 import { Task } from '@/src/types';
 import { cn, formatDate } from '@/src/lib/utils';
 

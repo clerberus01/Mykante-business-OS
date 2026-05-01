@@ -1,4 +1,5 @@
 import type React from 'react';
+import { normalizeOptionalImageUrl } from './imageUrl';
 
 export type OrganizationBranding = {
   appName?: string;
@@ -37,7 +38,7 @@ export function normalizeBranding(input: unknown): Required<OrganizationBranding
 
   return {
     appName: validText(source.appName, defaultBranding.appName),
-    logoUrl: typeof source.logoUrl === 'string' ? source.logoUrl.trim() : defaultBranding.logoUrl,
+    logoUrl: normalizeOptionalImageUrl(source.logoUrl) || defaultBranding.logoUrl,
     primaryColor: validColor(source.primaryColor, defaultBranding.primaryColor),
     darkColor: validColor(source.darkColor, defaultBranding.darkColor),
     backgroundColor: validColor(source.backgroundColor, defaultBranding.backgroundColor),

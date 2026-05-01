@@ -1,0 +1,12 @@
+{
+  "name": "@mykante/shared",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./validation/client": "./validation/client.ts"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  }
+}

@@ -30,6 +30,11 @@ type TestChannel = 'email' | 'push' | null;
 type PrivacyAction = 'export' | 'deletion' | 'anonymization' | null;
 type SettingsSection = 'profile' | 'branding' | 'notifications' | 'security' | 'database' | 'api';
 
+type MobileQrLogin = {
+  qrSvg: string;
+  expiresAt: string;
+};
+
 async function sendTestNotification(accessToken: string, organizationId: string | null, channel: 'email' | 'push') {
   const endpoint = channel === 'email' ? '/api/notifications/email' : '/api/notifications/push';
 
@@ -131,6 +136,9 @@ export default function Settings() {
   const [portalSubtitle, setPortalSubtitle] = useState(defaultBranding.portalSubtitle);
   const [apiHealth, setApiHealth] = useState<'idle' | 'checking' | 'ok' | 'error'>('idle');
   const [apiHealthMessage, setApiHealthMessage] = useState('');
+  const [mobileQrLogin, setMobileQrLogin] = useState<MobileQrLogin | null>(null);
+  const [mobileQrLoading, setMobileQrLoading] = useState(false);
+  const [mobileQrError, setMobileQrError] = useState('');
 
   const sections: { id: SettingsSection; label: string; icon: typeof User }[] = [
     { id: 'profile', label: 'Meu Perfil', icon: User },
@@ -268,6 +276,41 @@ export default function Settings() {
     } catch (error) {
       setApiHealth('error');
       setApiHealthMessage(error instanceof Error ? error.message : 'Falha ao consultar o Supabase.');
+    }
+  };
+
+  const handleCreateMobileQrLogin = async () => {
+    if (!session?.access_token) {
+      setMobileQrError('Sessao invalida.');
+      return;
+    }
+
+    setMobileQrLoading(true);
+    setMobileQrError('');
+
+    try {
+      const response = await fetch('/api/auth/mobile-qr/create', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          ...(organization?.id ? { 'X-Organization-Id': organization.id } : {}),
+        },
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result?.qrSvg || !result?.expiresAt) {
+        throw new Error(result?.error || 'Nao foi possivel gerar o QR de login.');
+      }
+
+      setMobileQrLogin({
+        qrSvg: result.qrSvg,
+        expiresAt: result.expiresAt,
+      });
+    } catch (error) {
+      setMobileQrError(error instanceof Error ? error.message : 'Nao foi possivel gerar o QR de login.');
+      setMobileQrLogin(null);
+    } finally {
+      setMobileQrLoading(false);
     }
   };
 
@@ -874,6 +917,55 @@ export default function Settings() {
                   <p className="text-[10px] text-gray-500 leading-relaxed">
                     O navegador usa somente credenciais públicas necessárias para a sessão. Chaves server-side permanecem nas funções API e no ambiente da Vercel.
                   </p>
+                </div>
+
+                <div className="p-4 rounded bg-gray-50 border border-gray-100 space-y-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <Smartphone className="w-5 h-5 text-os-text" />
+                      <div>
+                        <p className="text-xs font-bold text-os-text">Login do App por QR</p>
+                        <p className="text-[10px] text-gray-400">
+                          Gere um QR temporário para validar este usuário no app mobile.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleCreateMobileQrLogin()}
+                      disabled={mobileQrLoading}
+                      className="px-3 py-1.5 bg-os-dark text-white text-[9px] font-bold uppercase tracking-widest rounded hover:bg-brand transition-all disabled:opacity-40 flex items-center gap-2"
+                    >
+                      {mobileQrLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Smartphone className="w-3 h-3" />}
+                      Gerar QR
+                    </button>
+                  </div>
+
+                  {mobileQrError && (
+                    <div className="p-3 rounded border border-red-100 bg-red-50 text-[10px] font-semibold text-red-700">
+                      {mobileQrError}
+                    </div>
+                  )}
+
+                  {mobileQrLogin && (
+                    <div className="flex flex-col sm:flex-row gap-4 items-start">
+                      <div
+                        className="bg-white border border-gray-100 rounded p-3 w-40 h-40 flex items-center justify-center [&_svg]:w-full [&_svg]:h-full"
+                        dangerouslySetInnerHTML={{ __html: mobileQrLogin.qrSvg }}
+                      />
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                          Validade
+                        </p>
+                        <p className="text-xs font-semibold text-os-text">
+                          Expira em {new Date(mobileQrLogin.expiresAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                        <p className="text-[10px] text-gray-400 leading-relaxed max-w-sm">
+                          Abra o app, toque em Entrar com QR code e aponte a camera para esta imagem. O codigo e de uso unico.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </section>

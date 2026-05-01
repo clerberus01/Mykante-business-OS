@@ -4,6 +4,7 @@ import { useAuth } from '@/src/contexts/AuthContext';
 import { useRepositoryContext } from '@/src/hooks/supabase/useRepositoryContext';
 import { queryKeys } from '@/src/hooks/supabase/queryKeys';
 import type { OrganizationBranding } from '@/src/lib/branding';
+import { assertOptionalImageUrl } from '@/src/lib/imageUrl';
 
 type ApiHealthResult = {
   status: 'ok' | 'error';
@@ -68,12 +69,19 @@ export function useSupabaseSettings() {
       branding?: OrganizationBranding;
     }) => {
       if (!user) return;
+      const nextAvatarUrl = assertOptionalImageUrl(avatarUrl, 'Avatar');
+      const nextBranding = branding
+        ? {
+            ...branding,
+            logoUrl: assertOptionalImageUrl(branding.logoUrl ?? '', 'Logo'),
+          }
+        : undefined;
 
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
           full_name: fullName.trim() || null,
-          avatar_url: avatarUrl.trim() || null,
+          avatar_url: nextAvatarUrl || null,
         })
         .eq('id', user.id);
 
@@ -96,7 +104,7 @@ export function useSupabaseSettings() {
           organizationRecord?.metadata && typeof organizationRecord.metadata === 'object'
             ? organizationRecord.metadata as Record<string, unknown>
             : {};
-        const metadata = branding ? { ...currentMetadata, branding } : currentMetadata;
+        const metadata = nextBranding ? { ...currentMetadata, branding: nextBranding } : currentMetadata;
 
         const { error: organizationError } = await supabase
           .from('organizations')

@@ -289,6 +289,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       active = false;
       subscription.unsubscribe();
     };
+  // Auth bootstrap must subscribe only once for the Supabase client lifetime.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const getAuthCredentials = (identifier: string) => {
@@ -497,6 +499,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {

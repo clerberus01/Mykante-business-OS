@@ -6,9 +6,24 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "mykantecrm",
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Permita que o Mykante leia o QR code de login."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Permita que o Mykante valide a localizacao do login."
+        }
+      ]
+    ],
     "extra": {
       "supabaseUrl": "",
-      "supabaseAnonKey": ""
+      "supabaseAnonKey": "",
+      "apiBaseUrl": ""
     }
   }
 }

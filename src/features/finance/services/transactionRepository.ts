@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import type { BankStatementLine, CostCenter, FinanceCategory, Transaction } from '@/src/types';
 import { SupabaseRepository } from '@/src/services/shared/supabaseRepository';
-import { toIsoString, toUnixTimestamp } from '@/src/services/shared/mappers';
+import { toIsoString } from '@/src/services/shared/mappers';
 
 type TransactionRecord = {
   id: string;

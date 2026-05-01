@@ -1,15 +1,7 @@
 import React from 'react';
-import { Mail, Phone, FileText, StickyNote, MoreVertical, Clock } from 'lucide-react';
+import { MoreVertical, Clock } from 'lucide-react';
 import { TimelineEvent } from '@/src/types';
 import { formatDate, cn } from '@/src/lib/utils';
-
-const ICON_MAP = {
-  email: Mail,
-  whatsapp: Phone,
-  note: StickyNote,
-  file: FileText,
-  system: Clock,
-};
 
 const COLOR_MAP = {
   email: 'text-blue-500 bg-blue-50',
@@ -44,7 +36,6 @@ export default function Timeline({ events, onDelete }: { events: TimelineEvent[]
   return (
     <div className="space-y-6 relative before:absolute before:inset-0 before:ml-[5px] before:-translate-x-px before:h-full before:w-[1px] before:bg-gray-100">
       {events.map((event) => {
-        const Icon = ICON_MAP[event.type] || Clock;
         return (
           <div key={event.id} className="relative pl-8 group">
             <div className={cn(

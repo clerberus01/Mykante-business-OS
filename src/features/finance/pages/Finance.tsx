@@ -5,7 +5,6 @@ import {
   TrendingDown, 
   DollarSign, 
   Download, 
-  Filter, 
   Plus, 
   ArrowUpRight, 
   ArrowDownLeft,
@@ -13,14 +12,11 @@ import {
   Search,
   MoreHorizontal,
   MessageSquare,
-  Mail,
   AlertCircle,
   FileUp,
-  History,
   LayoutDashboard,
   CheckCircle2,
   Clock,
-  ArrowRight,
   Tags,
   Building2,
   ReceiptText,
@@ -37,14 +33,13 @@ import {
   ResponsiveContainer, 
   BarChart,
   Bar,
-  Cell
 } from 'recharts';
 import {
   useSupabaseTransactions as useTransactions,
   useSupabaseClients as useClients,
   useSupabaseProjects as useProjects,
 } from '@/src/hooks/supabase';
-import { Transaction, TransactionStatus } from '@/src/types';
+import { Transaction } from '@/src/types';
 import TransactionModal from '../components/TransactionModal';
 import { clearPendingNavigationIntent, getPendingNavigationIntent } from '@/src/lib/navigation';
 
@@ -58,7 +53,6 @@ export default function Finance() {
     categories,
     costCenters,
     bankStatementLines,
-    loading,
     addTransaction,
     updateTransaction,
     createCategory,
@@ -100,8 +94,6 @@ export default function Finance() {
   const metrics = useMemo(() => {
     const now = new Date();
     const curMonth = now.getMonth();
-    const curYear = now.getFullYear();
-
     const monthlyIncome = transactions
       .filter(t => t.type === 'income' && t.status === 'liquidated' && new Date(t.date).getMonth() === curMonth)
       .reduce((acc, t) => acc + t.amount, 0);

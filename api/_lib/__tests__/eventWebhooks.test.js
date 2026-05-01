@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertSafeWebhookEndpointUrl,
   buildWebhookPayload,
   buildWebhookSignatureHeader,
   verifyWebhookSignature,
@@ -54,5 +55,44 @@ describe('event webhook helpers', () => {
       body,
       signature,
     })).toBe(false);
+  });
+
+  it('allows HTTPS webhook URLs that resolve to public addresses', async () => {
+    const resolver = async () => [{ address: '203.0.113.10', family: 4 }];
+
+    await expect(assertSafeWebhookEndpointUrl('https://webhooks.example.com/events', resolver))
+      .resolves.toMatchObject({
+        protocol: 'https:',
+        hostname: 'webhooks.example.com',
+      });
+  });
+
+  it('blocks webhook URLs with unsafe URL shapes', async () => {
+    const resolver = async () => [{ address: '203.0.113.10', family: 4 }];
+
+    await expect(assertSafeWebhookEndpointUrl('http://webhooks.example.com/events', resolver))
+      .rejects.toThrow('must use HTTPS');
+    await expect(assertSafeWebhookEndpointUrl('https://user:pass@webhooks.example.com/events', resolver))
+      .rejects.toThrow('must not include credentials');
+    await expect(assertSafeWebhookEndpointUrl('https://webhooks.example.com:8443/events', resolver))
+      .rejects.toThrow('port is not allowed');
+    await expect(assertSafeWebhookEndpointUrl('https://localhost/events', resolver))
+      .rejects.toThrow('host is not allowed');
+  });
+
+  it('blocks webhook URLs that use or resolve to private addresses', async () => {
+    await expect(assertSafeWebhookEndpointUrl('https://127.0.0.1/events'))
+      .rejects.toThrow('blocked address');
+    await expect(assertSafeWebhookEndpointUrl('https://[::1]/events'))
+      .rejects.toThrow('blocked address');
+    await expect(assertSafeWebhookEndpointUrl('https://webhooks.example.com/events', async () => [
+      { address: '10.0.0.5', family: 4 },
+    ])).rejects.toThrow('blocked address');
+    await expect(assertSafeWebhookEndpointUrl('https://webhooks.example.com/events', async () => [
+      { address: 'fe80::1', family: 6 },
+    ])).rejects.toThrow('blocked address');
+    await expect(assertSafeWebhookEndpointUrl('https://webhooks.example.com/events', async () => [
+      { address: '::ffff:172.16.0.1', family: 6 },
+    ])).rejects.toThrow('blocked address');
   });
 });

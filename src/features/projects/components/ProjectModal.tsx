@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { X, Loader2, Calendar, Target, DollarSign, Users, Info } from 'lucide-react';
 import { Project, ProjectStatus, PaymentStatus, ProjectTemplate } from '@/src/types';
-import { cn } from '@/src/lib/utils';
 import { useSupabaseClients as useClients } from '@/src/hooks/supabase';
 import { projectFormSchema } from '@/src/schemas';
 

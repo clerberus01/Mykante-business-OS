@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { sendJson } from '../_lib/auth.js';
+import { escapeHtml } from '../_lib/html.js';
 import { withApiMiddleware } from '../_lib/middleware.js';
 import { getValidationErrorPayload, readValidatedJsonBody, testNotificationSchema } from '../_lib/validation.js';
 
@@ -35,6 +36,7 @@ async function handler(request, response, authContext) {
         test: true,
       },
     };
+    const displayName = escapeHtml(profile?.full_name || userEmail);
 
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
@@ -44,7 +46,7 @@ async function handler(request, response, authContext) {
         <div style="font-family: Arial, sans-serif; line-height: 1.5;">
           <h2>Teste de envio concluido</h2>
           <p>Este e-mail confirma que o canal transacional via Resend esta ativo.</p>
-          <p>Usuario: ${profile?.full_name || userEmail}</p>
+          <p>Usuario: ${displayName}</p>
         </div>
       `,
       text: 'Este e-mail confirma que o canal transacional via Resend esta ativo.',

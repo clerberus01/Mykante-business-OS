@@ -8,15 +8,9 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@mykante/shared/*": [
-        "../../packages/shared/*"
-      ]
+      "@mykante/shared/validation/client": ["../../packages/shared/validation/client.ts"],
+      "@mykante/shared/*": ["../../packages/shared/*"]
     }
   },
-  "include": [
-    "App.tsx",
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "../../packages/shared/**/*.ts"
-  ]
+  "include": ["App.tsx", "src/**/*.ts", "src/**/*.tsx", "../../packages/shared/**/*.ts"]
 }

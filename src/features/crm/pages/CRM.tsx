@@ -17,11 +17,8 @@ import {
   AlertCircle,
   Link2,
   Lock,
-  MapPin,
-  Landmark,
-  Compass as Origin
 } from 'lucide-react';
-import { Client, CrmDeal, TimelineEvent, TimelineEventType, Transaction, Proposal } from '@/src/types';
+import { Client, CrmDeal, TimelineEventType, Transaction, Proposal } from '@/src/types';
 import Timeline from '../components/Timeline';
 import ClientModal from '../components/ClientModal';
 import { cn, formatDate, formatCurrency } from '@/src/lib/utils';

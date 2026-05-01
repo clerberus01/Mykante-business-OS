@@ -1,9 +1,8 @@
-// @ts-nocheck
-import React from 'react';
+import { Component, type ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
 
 interface ContentErrorBoundaryProps {
-  children: React.ReactNode;
+  children: ReactNode;
   resetKey?: string;
 }
 
@@ -12,10 +11,14 @@ interface ContentErrorBoundaryState {
   errorMessage: string | null;
 }
 
-export default class ContentErrorBoundary extends React.Component<
+export default class ContentErrorBoundary extends Component<
   ContentErrorBoundaryProps,
   ContentErrorBoundaryState
 > {
+  declare readonly props: Readonly<ContentErrorBoundaryProps>;
+  declare state: ContentErrorBoundaryState;
+  declare setState: (state: Partial<ContentErrorBoundaryState>) => void;
+
   constructor(props: ContentErrorBoundaryProps) {
     super(props);
     this.state = {

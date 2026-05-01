@@ -132,6 +132,8 @@ export default function Communications() {
     () => conversations.find((conversation) => conversation.id === activeConversationId) ?? filteredConversations[0] ?? null,
     [activeConversationId, conversations, filteredConversations],
   );
+  const selectedConversationId = activeConversation?.id ?? null;
+  const selectedConversationUnreadCount = activeConversation?.unreadCount ?? 0;
 
   const activeClient = activeConversation?.clientId ? clientsById.get(activeConversation.clientId) : undefined;
   const activeMessages = activeConversation ? messagesByConversation[activeConversation.id] ?? [] : [];
@@ -143,15 +145,15 @@ export default function Communications() {
   }, [activeConversation, filteredConversations]);
 
   useEffect(() => {
-    if (!activeConversation) return;
+    if (!selectedConversationId) return;
 
-    setActiveConversationId(activeConversation.id);
-    void loadMessages(activeConversation.id);
+    setActiveConversationId(selectedConversationId);
+    void loadMessages(selectedConversationId);
 
-    if (activeConversation.unreadCount > 0) {
-      void markConversationRead(activeConversation.id);
+    if (selectedConversationUnreadCount > 0) {
+      void markConversationRead(selectedConversationId);
     }
-  }, [activeConversation?.id]);
+  }, [selectedConversationId, selectedConversationUnreadCount, loadMessages, markConversationRead]);
 
   const handleOpenClient = async (client: Client) => {
     setErrorMessage(null);

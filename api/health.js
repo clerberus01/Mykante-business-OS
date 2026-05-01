@@ -1,5 +1,5 @@
 import { getSupabaseAdminClient } from './_lib/supabaseAdmin.js';
-import { sendJson } from './_lib/auth.js';
+import { getAuthenticatedContext, requireOrganizationRole, sendJson } from './_lib/auth.js';
 import { withApiMiddleware } from './_lib/middleware.js';
 
 const REQUIRED_SERVER_ENVS = [
@@ -21,9 +21,32 @@ function getMissingEnvKeys() {
   });
 }
 
-async function handler(request, response) {
+function wantsDetailedHealth(request) {
+  return request.query?.detail === 'true' || request.query?.detail === '1';
+}
+
+export async function handler(request, response) {
   if (request.method !== 'GET') {
     return sendJson(response, 405, { error: 'Method not allowed.' });
+  }
+
+  if (!wantsDetailedHealth(request)) {
+    return sendJson(response, 200, {
+      success: true,
+      status: 'ok',
+      now: new Date().toISOString(),
+    });
+  }
+
+  let authContext;
+
+  try {
+    authContext = await getAuthenticatedContext(request);
+    requireOrganizationRole(authContext, ['owner', 'admin']);
+  } catch (error) {
+    return sendJson(response, error?.statusCode || 401, {
+      error: error instanceof Error ? error.message : 'Unauthorized.',
+    });
   }
 
   try {

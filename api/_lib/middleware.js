@@ -8,17 +8,23 @@ function getHeader(request, name) {
   return request.headers?.[name] || request.headers?.[name.toLowerCase()] || request.headers?.[name.toUpperCase()];
 }
 
+function shouldTrustProxyHeaders() {
+  return process.env.VERCEL === '1' || Boolean(process.env.VERCEL_ENV) || process.env.TRUST_PROXY_HEADERS === 'true';
+}
+
 function getClientIp(request) {
-  const forwardedFor = getHeader(request, 'x-forwarded-for');
+  if (shouldTrustProxyHeaders()) {
+    const forwardedFor = getHeader(request, 'x-forwarded-for');
 
-  if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
-    return forwardedFor.split(',')[0].trim();
-  }
+    if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
+      return forwardedFor.split(',')[0].trim();
+    }
 
-  const realIp = getHeader(request, 'x-real-ip');
+    const realIp = getHeader(request, 'x-real-ip');
 
-  if (typeof realIp === 'string' && realIp.trim()) {
-    return realIp.trim();
+    if (typeof realIp === 'string' && realIp.trim()) {
+      return realIp.trim();
+    }
   }
 
   return request.socket?.remoteAddress || 'unknown';
@@ -101,9 +107,9 @@ async function checkRateLimit(request, options = {}) {
   const windowMs = options.windowMs ?? DEFAULT_WINDOW_MS;
   const now = Date.now();
   const bucket = Math.floor(now / windowMs);
-  const clientIp = getClientIp(request);
+  const identity = options.identity || getClientIp(request);
   const prefix = options.keyPrefix || 'api';
-  const key = `ratelimit:${prefix}:${bucket}:${clientIp}`;
+  const key = `ratelimit:${prefix}:${bucket}:${identity}`;
   const redisConfig = getRedisConfig();
 
   if (!redisConfig) {
@@ -126,7 +132,8 @@ function applyRateLimitHeaders(response, result) {
 
 export function withApiMiddleware(handler, options = {}) {
   return async function middlewareHandler(request, response) {
-    const rateLimit = await checkRateLimit(request, options.rateLimit);
+    const rateLimitOptions = options.rateLimit ?? {};
+    const rateLimit = await checkRateLimit(request, rateLimitOptions);
     applyRateLimitHeaders(response, rateLimit);
 
     if (!rateLimit.allowed) {
@@ -143,6 +150,23 @@ export function withApiMiddleware(handler, options = {}) {
         return sendJson(response, error?.statusCode || 401, {
           error: error instanceof Error ? error.message : 'Unauthorized.',
         });
+      }
+
+      if (rateLimitOptions.authenticated !== false) {
+        const authenticatedRateLimit = await checkRateLimit(request, {
+          ...rateLimitOptions,
+          keyPrefix: `${rateLimitOptions.keyPrefix || 'api'}:user`,
+          identity: `user:${context.user.id}`,
+        });
+        applyRateLimitHeaders(response, authenticatedRateLimit);
+
+        if (!authenticatedRateLimit.allowed) {
+          response.setHeader(
+            'Retry-After',
+            String(Math.max(Math.ceil((authenticatedRateLimit.resetAt - Date.now()) / 1000), 1)),
+          );
+          return sendJson(response, 429, { error: 'Too many requests. Try again shortly.' });
+        }
       }
     }
 

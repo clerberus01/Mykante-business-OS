@@ -5,7 +5,6 @@ import {
   DollarSign, 
   Calendar, 
   FileText, 
-  Paperclip,
   Recycle,
   Tag,
   Link2

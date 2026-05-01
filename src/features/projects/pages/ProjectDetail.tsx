@@ -16,12 +16,9 @@ import {
   Users,
   AlertCircle,
   FolderOpen,
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
   X
 } from 'lucide-react';
-import { Project, Milestone, TaskStatus, Task, Transaction } from '@/src/types';
+import { Project, Milestone, TaskStatus, Task } from '@/src/types';
 import { cn, formatDate, formatCurrency } from '@/src/lib/utils';
 import {
   useSupabaseMilestones as useMilestones,
@@ -41,10 +38,9 @@ interface ProjectDetailProps {
 }
 
 export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetailProps) {
-  const { milestones, loading: loadingMilestones, updateMilestone, addMilestone, requestMilestoneApproval } = useMilestones(project.id);
+  const { milestones, updateMilestone, addMilestone, requestMilestoneApproval } = useMilestones(project.id);
   const {
     tasks,
-    loading: loadingTasks,
     updateTask,
     deleteTask,
     addTask,
@@ -960,25 +956,6 @@ export default function ProjectDetail({ project, onBack, onEdit }: ProjectDetail
                      <div className="flex gap-2">
                         <button type="button" onClick={() => void downloadDocument(file)} className="flex-1 py-1.5 bg-gray-50 text-[8px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-100 rounded">DOWNLOAD</button>
                         <button type="button" onClick={() => void downloadDocument(file)} className="flex-1 py-1.5 bg-gray-50 text-[8px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-100 rounded">VISUALIZAR</button>
-                     </div>
-                  </div>
-                ))}
-                {false && [
-                  { name: 'Proposta Comercial.pdf', size: '2.4 MB', type: 'PDF' },
-                  { name: 'Contrato Assinado.pdf', size: '1.1 MB', type: 'PDF' },
-                  { name: 'Manual da Marca.zip', size: '42 MB', type: 'ZIP' },
-                ].map((file, i) => (
-                  <div key={i} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col gap-4 group hover:border-brand transition-all cursor-pointer">
-                     <div className="w-10 h-10 rounded bg-gray-50 flex items-center justify-center text-gray-300 group-hover:text-brand bg-brand/5">
-                        <FileText className="w-5 h-5 text-brand" />
-                     </div>
-                     <div>
-                        <h4 className="text-xs font-bold text-os-text truncate">{file.name}</h4>
-                        <p className="text-[9px] font-mono text-gray-400 uppercase mt-1">{file.size} • {file.type}</p>
-                     </div>
-                     <div className="flex gap-2">
-                        <button type="button" className="flex-1 py-1.5 bg-gray-50 text-[8px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-100 rounded">DOWNLOAD</button>
-                        <button type="button" className="flex-1 py-1.5 bg-gray-50 text-[8px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-100 rounded">VISUALIZAR</button>
                      </div>
                   </div>
                 ))}

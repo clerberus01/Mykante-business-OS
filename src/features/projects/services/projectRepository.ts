@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ActivityLog, Milestone, Project, ProjectPerformanceReview, ProjectTemplate, ProjectTimeEntry, Task } from '@/src/types';
 import { SupabaseRepository } from '@/src/services/shared/supabaseRepository';
-import { toIsoString, toUnixTimestamp } from '@/src/services/shared/mappers';
+import { toIsoString } from '@/src/services/shared/mappers';
 
 type ProjectRecord = {
   id: string;
@@ -560,7 +560,7 @@ export class SupabaseProjectRepository extends SupabaseRepository {
           .eq('project_id', projectId),
         'Nao foi possivel carregar o apontamento de horas.',
       ) as unknown[];
-    } catch (error) {
+    } catch {
       timeRows = await this.unwrap(
         this.supabase
           .from('project_time_entries')

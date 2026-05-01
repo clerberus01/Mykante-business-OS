@@ -27,6 +27,11 @@ export const testNotificationSchema = z.object({
   test: z.literal(true).optional(),
 });
 
+export const mobileQrConsumeSchema = z.object({
+  code: z.string().trim().min(32).max(256),
+  location: z.record(z.string(), z.unknown()).optional(),
+});
+
 export async function readValidatedJsonBody(request, schema) {
   const body = await readJsonBody(request);
   const result = schema.safeParse(body);

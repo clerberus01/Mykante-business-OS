@@ -16,6 +16,8 @@ import {
   CheckCircle2,
   Clock,
   Download,
+  Eye,
+  EyeOff,
   FileSpreadsheet,
   FileText,
   Filter,
@@ -34,6 +36,10 @@ type DrillDown = {
   title: string;
   rows: Array<Record<string, string | number>>;
 } | null;
+
+const DASHBOARD_VALUES_VISIBLE_STORAGE_KEY = 'mykante-dashboard-values-visible';
+const MASKED_CURRENCY = 'R$ ******';
+const MASKED_VALUE = '******';
 
 function toDateInputValue(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -75,6 +81,14 @@ function getMonthKey(value: string) {
 function getMonthLabel(value: string) {
   const [year, month] = value.split('-');
   return `${month}/${year.slice(2)}`;
+}
+
+function getInitialValuesVisible() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return window.localStorage.getItem(DASHBOARD_VALUES_VISIBLE_STORAGE_KEY) === 'true';
 }
 
 function buildReportRows(input: {
@@ -152,6 +166,11 @@ export default function Dashboard({ onOpenProject }: { onOpenProject?: (projectI
   const [periodStart, setPeriodStart] = React.useState(toDateInputValue(defaultStart));
   const [periodEnd, setPeriodEnd] = React.useState(toDateInputValue(defaultEnd));
   const [drillDown, setDrillDown] = React.useState<DrillDown>(null);
+  const [valuesVisible, setValuesVisible] = React.useState(getInitialValuesVisible);
+
+  React.useEffect(() => {
+    window.localStorage.setItem(DASHBOARD_VALUES_VISIBLE_STORAGE_KEY, String(valuesVisible));
+  }, [valuesVisible]);
 
   const startDate = React.useMemo(() => parseLocalDate(periodStart, defaultStart), [defaultStart, periodStart]);
   const endDate = React.useMemo(() => {
@@ -316,10 +335,23 @@ export default function Dashboard({ onOpenProject }: { onOpenProject?: (projectI
     doc.save(`dashboard-bi-${periodStart}-${periodEnd}.pdf`);
   };
 
+  const formatProtectedCurrency = React.useCallback(
+    (value: number) => (valuesVisible ? formatCurrency(value) : MASKED_CURRENCY),
+    [valuesVisible],
+  );
+
+  const formatProtectedReportValue = React.useCallback(
+    (value: string | number) => {
+      if (typeof value !== 'number') return value;
+      return valuesVisible ? value.toLocaleString('pt-BR') : MASKED_VALUE;
+    },
+    [valuesVisible],
+  );
+
   const stats = [
     {
       label: 'Receita Mensal',
-      value: formatCurrency(summary.monthlyIncome),
+      value: formatProtectedCurrency(summary.monthlyIncome),
       icon: TrendingUp,
       delta: summary.monthlyIncome > 0 ? 'SUPABASE_LIVE' : 'SEM_BAIXAS',
       color: 'text-brand',
@@ -375,17 +407,34 @@ export default function Dashboard({ onOpenProject }: { onOpenProject?: (projectI
 
   return (
     <div className="space-y-8">
-      <header className="flex flex-col gap-1">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono text-brand font-bold bg-brand/10 px-2 py-0.5 rounded uppercase tracking-widest">
-            Sistema Operacional
-          </span>
-          <span className="text-[10px] font-mono text-gray-400">BI_AVANCADO: ATIVO</span>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono text-brand font-bold bg-brand/10 px-2 py-0.5 rounded uppercase tracking-widest">
+              Sistema Operacional
+            </span>
+            <span className="text-[10px] font-mono text-gray-400">BI_AVANCADO: ATIVO</span>
+          </div>
+          <h2 className="text-2xl font-bold text-os-text tracking-tight">
+            Bom dia, {user?.displayName || user?.email?.split('@')[0] || 'Operador'}.{' '}
+            <span className="text-brand font-black">!</span>
+          </h2>
         </div>
-        <h2 className="text-2xl font-bold text-os-text tracking-tight">
-          Bom dia, {user?.displayName || user?.email?.split('@')[0] || 'Operador'}.{' '}
-          <span className="text-brand font-black">!</span>
-        </h2>
+        <button
+          type="button"
+          onClick={() => setValuesVisible((current) => !current)}
+          aria-pressed={valuesVisible}
+          className={cn(
+            'h-9 shrink-0 inline-flex items-center gap-2 rounded border px-3 text-[10px] font-bold uppercase tracking-[0.16em] transition-all',
+            valuesVisible
+              ? 'border-brand/20 bg-brand/10 text-brand hover:bg-brand/15'
+              : 'border-gray-100 bg-white text-gray-500 hover:border-gray-200 hover:text-os-text',
+          )}
+          title={valuesVisible ? 'Ocultar valores' : 'Mostrar valores'}
+        >
+          {valuesVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+          {valuesVisible ? 'Valores visiveis' : 'Valores ocultos'}
+        </button>
       </header>
 
       <section className="bg-white border border-gray-100 rounded p-4">
@@ -453,11 +502,11 @@ export default function Dashboard({ onOpenProject }: { onOpenProject?: (projectI
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-gray-100 rounded p-4">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400">Resultado Realizado</p>
-          <p className="mt-2 text-xl font-mono font-bold text-os-text">{formatCurrency(biMetrics.realized)}</p>
+          <p className="mt-2 text-xl font-mono font-bold text-os-text">{formatProtectedCurrency(biMetrics.realized)}</p>
         </div>
         <div className="bg-white border border-gray-100 rounded p-4">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400">Forecast Caixa</p>
-          <p className="mt-2 text-xl font-mono font-bold text-brand">{formatCurrency(biMetrics.forecast + biMetrics.pending)}</p>
+          <p className="mt-2 text-xl font-mono font-bold text-brand">{formatProtectedCurrency(biMetrics.forecast + biMetrics.pending)}</p>
         </div>
         <div className="bg-white border border-gray-100 rounded p-4">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400">Horas Lancadas</p>
@@ -480,8 +529,8 @@ export default function Dashboard({ onOpenProject }: { onOpenProject?: (projectI
               <LineChart data={cashFlowData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={(value) => valuesVisible ? String(value) : MASKED_VALUE} />
+                <Tooltip formatter={(value) => formatProtectedCurrency(Number(value))} />
                 <Line type="monotone" dataKey="income" name="Receita" stroke="#10B981" strokeWidth={2} />
                 <Line type="monotone" dataKey="expense" name="Despesa" stroke="#EF4444" strokeWidth={2} />
                 <Line type="monotone" dataKey="forecast" name="Forecast" stroke="#6D5DF7" strokeWidth={2} />
@@ -499,7 +548,7 @@ export default function Dashboard({ onOpenProject }: { onOpenProject?: (projectI
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="status" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip formatter={(value, name) => name === 'value' ? formatCurrency(Number(value)) : value} />
+                <Tooltip formatter={(value, name) => name === 'value' ? formatProtectedCurrency(Number(value)) : value} />
                 <Bar
                   dataKey="value"
                   name="Valor"
@@ -554,7 +603,7 @@ export default function Dashboard({ onOpenProject }: { onOpenProject?: (projectI
                 <span className="font-mono text-gray-400">{row.data}</span>
                 <span className="font-bold text-os-text">{row.tipo}</span>
                 <span className="col-span-2 truncate text-gray-600">{row.descricao}</span>
-                <span className="font-mono font-bold text-right">{typeof row.valor === 'number' ? row.valor.toLocaleString('pt-BR') : row.valor}</span>
+                <span className="font-mono font-bold text-right">{formatProtectedReportValue(row.valor)}</span>
               </div>
             ))}
             {reportRows.length === 0 && (
