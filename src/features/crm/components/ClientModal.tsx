@@ -54,20 +54,27 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
   const [tagInput, setTagInput] = useState('');
   const [cepLoading, setCepLoading] = useState(false);
   const isCompany = formData.personType.trim().toLowerCase().startsWith('j');
+  const initialTaxId = initialData?.taxId?.trim() ?? '';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const documentValidation = clientDocumentSchema.safeParse({
-        personType: formData.personType,
-        taxId: formData.taxId,
-      });
+      const nextTaxId = formData.taxId.trim();
+      const documentChanged = nextTaxId !== initialTaxId;
+      const shouldValidateDocument = !initialData || documentChanged;
 
-      if (!documentValidation.success) {
-        window.alert(documentValidation.error.issues[0]?.message ?? 'Documento invalido.');
-        setLoading(false);
-        return;
+      if (shouldValidateDocument) {
+        const documentValidation = clientDocumentSchema.safeParse({
+          personType: formData.personType,
+          taxId: nextTaxId,
+        });
+
+        if (!documentValidation.success) {
+          window.alert(documentValidation.error.issues[0]?.message ?? 'Documento invalido.');
+          setLoading(false);
+          return;
+        }
       }
 
       let customFields: Record<string, unknown> = {};
@@ -88,7 +95,7 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
       await onSave({
         ...clientPayload,
         email: formData.email.trim(),
-        taxId: formData.taxId.trim(),
+        taxId: nextTaxId,
         source: formData.source,
         segment: formData.segment.trim() || undefined,
         customFields,
@@ -278,7 +285,7 @@ export default function ClientModal({ onClose, onSave, initialData }: ClientModa
                       {isCompany ? 'CNPJ' : 'CPF'}
                     </label>
                     <input 
-                      required
+                      required={!initialData}
                       type="text" 
                       value={formData.taxId}
                       onChange={e => setFormData({ ...formData, taxId: e.target.value })}
