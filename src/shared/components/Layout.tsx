@@ -82,7 +82,7 @@ function useAppNavigation() {
 }
 
 const Sidebar = () => {
-  const { user, organization, isPlatformAdmin } = useAuth();
+  const { user, organization, isPlatformAdmin, canClaimInitialPlatformAdmin } = useAuth();
   const { activeNavId, goTo } = useAppNavigation();
   const branding = normalizeBranding(organization?.branding);
   const fallbackInitial = (user?.displayName || user?.email || 'M').charAt(0).toUpperCase();
@@ -112,7 +112,7 @@ const Sidebar = () => {
         ))}
       </nav>
       <div className="mt-auto flex flex-col gap-4 mb-4">
-        {isPlatformAdmin && (
+        {(isPlatformAdmin || canClaimInitialPlatformAdmin) && (
           <NavItem
             id="platform-admin"
             label="Admin Plataforma"

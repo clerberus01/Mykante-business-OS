@@ -1,6 +1,6 @@
 const requiredEnv = {
   supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-  supabasePublishableKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+  supabasePublishableKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY,
 };
 
 const optionalEnv = {
@@ -18,7 +18,7 @@ function getRequiredEnvValue(name: string, value: string | undefined) {
 export const env = {
   supabaseUrl: getRequiredEnvValue('VITE_SUPABASE_URL', requiredEnv.supabaseUrl),
   supabasePublishableKey: getRequiredEnvValue(
-    'VITE_SUPABASE_PUBLISHABLE_KEY',
+    'VITE_SUPABASE_PUBLISHABLE_KEY or VITE_SUPABASE_ANON_KEY',
     requiredEnv.supabasePublishableKey,
   ),
   oneSignalAppId: optionalEnv.oneSignalAppId || null,

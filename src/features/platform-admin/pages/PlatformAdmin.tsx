@@ -36,9 +36,36 @@ function MetricCard({
 }
 
 export default function PlatformAdmin() {
-  const { isPlatformAdmin, organization, role } = useAuth();
+  const {
+    canClaimInitialPlatformAdmin,
+    claimInitialPlatformAdmin,
+    isPlatformAdmin,
+    organization,
+    role,
+  } = useAuth();
   const { console: platformConsole, loading, error, refresh, revokeMyPlatformAccess } = usePlatformAdminConsole();
+  const [claiming, setClaiming] = React.useState(false);
   const [revoking, setRevoking] = React.useState(false);
+
+  const handleClaimInitialAdmin = async () => {
+    if (!window.confirm('Assumir este usuario como primeiro admin da plataforma? Esta acao cria acesso de super admin.')) {
+      return;
+    }
+
+    setClaiming(true);
+    try {
+      await claimInitialPlatformAdmin();
+    } catch (claimError) {
+      console.error('Initial platform admin claim failed:', claimError);
+      window.alert(
+        claimError instanceof Error
+          ? claimError.message
+          : 'Nao foi possivel assumir o primeiro admin da plataforma.',
+      );
+    } finally {
+      setClaiming(false);
+    }
+  };
 
   const handleRevoke = async () => {
     if (!window.confirm('Revogar seu acesso de admin da plataforma? Sua conta continuará apenas com o papel da empresa atual.')) {
@@ -61,6 +88,32 @@ export default function PlatformAdmin() {
   };
 
   if (!isPlatformAdmin) {
+    if (canClaimInitialPlatformAdmin) {
+      return (
+        <div className="h-full flex items-center justify-center">
+          <div className="max-w-lg bg-white border border-gray-100 rounded shadow-sm p-8 text-center">
+            <Shield className="w-10 h-10 text-brand mx-auto mb-4" />
+            <p className="text-sm font-black uppercase tracking-[0.2em] text-os-text mb-2">
+              Primeiro Admin Da Plataforma
+            </p>
+            <p className="text-xs text-gray-400 leading-relaxed mb-6">
+              Nenhum admin de plataforma ativo foi encontrado. Voce pode assumir este usuario como super admin
+              depois de autenticar e concluir a verificacao MFA.
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleClaimInitialAdmin()}
+              disabled={claiming}
+              className="mx-auto px-4 py-3 rounded bg-os-dark text-white text-[10px] font-black uppercase tracking-widest hover:bg-brand transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {claiming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+              Assumir Primeiro Admin
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="h-full flex items-center justify-center">
         <div className="max-w-lg bg-white border border-gray-100 rounded shadow-sm p-8 text-center">
