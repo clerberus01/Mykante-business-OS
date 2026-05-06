@@ -4,10 +4,12 @@
   "description": "CRM, projetos, financeiro e portal do cliente.",
   "start_url": "/",
   "scope": "/",
+  "id": "/",
   "display": "standalone",
   "background_color": "#f8fafc",
   "theme_color": "#111827",
   "orientation": "portrait-primary",
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "/pwa-icon.svg",

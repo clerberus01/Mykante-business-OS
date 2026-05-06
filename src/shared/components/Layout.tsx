@@ -25,6 +25,7 @@ import {
   useSupabaseProjects,
 } from '@/src/hooks/supabase';
 import { getBrandingStyle, normalizeBranding } from '@/src/lib/branding';
+import PwaInstallPrompt from './PwaInstallPrompt';
 
 interface NavItemProps {
   icon: React.ElementType;
@@ -390,6 +391,7 @@ export default function Layout({
         </main>
         <Footer />
       </div>
+      <PwaInstallPrompt />
     </div>
   );
 }
