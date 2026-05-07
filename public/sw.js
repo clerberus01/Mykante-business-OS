@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mykante-business-os-v2';
+const CACHE_NAME = 'mykante-business-os-v3';
 const APP_SHELL = ['/', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -28,9 +28,5 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(request).then((cached) =>
-      cached || fetch(request).catch(() => caches.match('/')),
-    ),
-  );
+  event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
 });

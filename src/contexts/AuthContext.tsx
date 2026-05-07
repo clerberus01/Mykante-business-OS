@@ -64,6 +64,23 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const supabase = getSupabaseBrowserClient();
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 15000;
+
+function withAuthTimeout<T>(promise: PromiseLike<T>, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} demorou para responder. Verifique sua conexao e tente novamente.`));
+    }, AUTH_BOOTSTRAP_TIMEOUT_MS);
+  });
+
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  });
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -93,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const getVerifiedTotpFactorId = async () => {
-    const { data, error } = await supabase.auth.mfa.listFactors();
+    const { data, error } = await withAuthTimeout(supabase.auth.mfa.listFactors(), 'Listagem de MFA');
 
     if (error) {
       throw error;
@@ -104,7 +121,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resolveMfaStatus = async () => {
-    const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const { data: assurance, error: assuranceError } = await withAuthTimeout(
+      supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+      'Validacao de MFA',
+    );
 
     if (assuranceError) {
       throw assuranceError;
@@ -147,11 +167,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      await supabase.rpc('bootstrap_current_user_organization');
+      await withAuthTimeout(supabase.rpc('bootstrap_current_user_organization'), 'Bootstrap da organizacao');
 
       const [platformAdminResult, platformAdminClaimResult] = await Promise.all([
-        supabase.rpc('is_platform_admin'),
-        supabase.rpc('can_claim_initial_platform_admin'),
+        withAuthTimeout(supabase.rpc('is_platform_admin'), 'Consulta de administrador da plataforma'),
+        withAuthTimeout(supabase.rpc('can_claim_initial_platform_admin'), 'Consulta de bootstrap de administrador'),
       ]);
 
       if (platformAdminResult.error) {
@@ -169,18 +189,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const [profileResult, membershipResult] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('email, full_name, avatar_url')
-          .eq('id', nextSession.user.id)
-          .maybeSingle(),
-        supabase
-          .from('organization_members')
-          .select('id, organization_id, role, organizations(name, metadata, default_locale, default_currency, portal_enabled)')
-          .eq('user_id', nextSession.user.id)
-          .eq('status', 'active')
-          .order('created_at', { ascending: true })
-          .limit(1),
+        withAuthTimeout(
+          supabase
+            .from('profiles')
+            .select('email, full_name, avatar_url')
+            .eq('id', nextSession.user.id)
+            .maybeSingle(),
+          'Consulta de perfil',
+        ),
+        withAuthTimeout(
+          supabase
+            .from('organization_members')
+            .select(
+              'id, organization_id, role, organizations(name, metadata, default_locale, default_currency, portal_enabled)',
+            )
+            .eq('user_id', nextSession.user.id)
+            .eq('status', 'active')
+            .order('created_at', { ascending: true })
+            .limit(1),
+          'Consulta de organizacao',
+        ),
       ]);
 
       const profile = (profileResult.data as {
@@ -262,15 +290,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let active = true;
 
     const initialize = async () => {
-      const {
-        data: { session: currentSession },
-      } = await supabase.auth.getSession();
+      try {
+        const {
+          data: { session: currentSession },
+        } = await withAuthTimeout(supabase.auth.getSession(), 'Sessao de autenticacao');
 
-      if (!active) {
-        return;
+        if (!active) {
+          return;
+        }
+
+        await hydrateAuthState(currentSession);
+      } catch (error) {
+        console.error('Supabase auth initialization error:', error);
+        if (active) {
+          resetState();
+          setLoading(false);
+        }
       }
-
-      await hydrateAuthState(currentSession);
     };
 
     void initialize();
@@ -378,25 +414,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const mfaRequired = Boolean(session && user && mfaStatus !== 'verified');
 
   const claimInitialPlatformAdmin = async () => {
-    const { error } = await supabase.rpc('claim_initial_platform_admin');
+    const { error } = await withAuthTimeout(
+      supabase.rpc('claim_initial_platform_admin'),
+      'Ativacao do administrador da plataforma',
+    );
 
     if (error) {
       throw error;
     }
 
     setLoading(true);
-    const {
-      data: { session: currentSession },
-    } = await supabase.auth.getSession();
-    await hydrateAuthState(currentSession);
+    try {
+      const {
+        data: { session: currentSession },
+      } = await withAuthTimeout(supabase.auth.getSession(), 'Sessao de autenticacao');
+      await hydrateAuthState(currentSession);
+    } catch (error) {
+      setLoading(false);
+      throw error;
+    }
   };
 
   const enrollMfa = async () => {
-    const { data, error } = await supabase.auth.mfa.enroll({
-      factorType: 'totp',
-      issuer: 'Mykante Business OS',
-      friendlyName: 'Mykante Business OS',
-    });
+    const { data, error } = await withAuthTimeout(
+      supabase.auth.mfa.enroll({
+        factorType: 'totp',
+        issuer: 'Mykante Business OS',
+        friendlyName: 'Mykante Business OS',
+      }),
+      'Cadastro de MFA',
+    );
 
     if (error) {
       throw error;
@@ -410,27 +457,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const verifyMfaEnrollment = async (factorId: string, code: string) => {
-    const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId });
+    const { data: challenge, error: challengeError } = await withAuthTimeout(
+      supabase.auth.mfa.challenge({ factorId }),
+      'Desafio de MFA',
+    );
 
     if (challengeError) {
       throw challengeError;
     }
 
-    const { error: verifyError } = await supabase.auth.mfa.verify({
-      factorId,
-      challengeId: challenge.id,
-      code: code.trim(),
-    });
+    const { error: verifyError } = await withAuthTimeout(
+      supabase.auth.mfa.verify({
+        factorId,
+        challengeId: challenge.id,
+        code: code.trim(),
+      }),
+      'Verificacao de MFA',
+    );
 
     if (verifyError) {
       throw verifyError;
     }
 
     setLoading(true);
-    const {
-      data: { session: currentSession },
-    } = await supabase.auth.getSession();
-    await hydrateAuthState(currentSession);
+    try {
+      const {
+        data: { session: currentSession },
+      } = await withAuthTimeout(supabase.auth.getSession(), 'Sessao de autenticacao');
+      await hydrateAuthState(currentSession);
+    } catch (error) {
+      setLoading(false);
+      throw error;
+    }
   };
 
   const verifyMfaChallenge = async (code: string) => {
@@ -441,27 +499,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Nenhum fator MFA verificado foi encontrado para esta conta.');
     }
 
-    const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId });
+    const { data: challenge, error: challengeError } = await withAuthTimeout(
+      supabase.auth.mfa.challenge({ factorId }),
+      'Desafio de MFA',
+    );
 
     if (challengeError) {
       throw challengeError;
     }
 
-    const { error: verifyError } = await supabase.auth.mfa.verify({
-      factorId,
-      challengeId: challenge.id,
-      code: code.trim(),
-    });
+    const { error: verifyError } = await withAuthTimeout(
+      supabase.auth.mfa.verify({
+        factorId,
+        challengeId: challenge.id,
+        code: code.trim(),
+      }),
+      'Verificacao de MFA',
+    );
 
     if (verifyError) {
       throw verifyError;
     }
 
     setLoading(true);
-    const {
-      data: { session: currentSession },
-    } = await supabase.auth.getSession();
-    await hydrateAuthState(currentSession);
+    try {
+      const {
+        data: { session: currentSession },
+      } = await withAuthTimeout(supabase.auth.getSession(), 'Sessao de autenticacao');
+      await hydrateAuthState(currentSession);
+    } catch (error) {
+      setLoading(false);
+      throw error;
+    }
   };
 
   const value = {
@@ -485,10 +554,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     organization,
     refreshAuth: async () => {
       setLoading(true);
-      const {
-        data: { session: currentSession },
-      } = await supabase.auth.getSession();
-      await hydrateAuthState(currentSession);
+      try {
+        const {
+          data: { session: currentSession },
+        } = await withAuthTimeout(supabase.auth.getSession(), 'Sessao de autenticacao');
+        await hydrateAuthState(currentSession);
+      } catch (error) {
+        console.error('Supabase auth refresh error:', error);
+        resetState();
+        setLoading(false);
+      }
     },
   };
 
